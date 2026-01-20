@@ -21,7 +21,7 @@ payload = {
 }
 
 print("Testing fal.ai Nano Banana Pro...")
-print(f"Endpoint: https://fal.run/fal-ai/nano-banana-pro/edit")
+print("Endpoint: https://fal.run/fal-ai/nano-banana-pro/edit")
 print(f"Payload: {json.dumps(payload, indent=2)}")
 print("\nSending request (this may take 30-60 seconds)...")
 
