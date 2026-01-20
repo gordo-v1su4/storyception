@@ -31,3 +31,6 @@ Use reference image in generation	🔴 Pending
 Add thumbnail attachments to NocoDB	🔴 Pending
 Build narrative prompt from DB columns	🔴 Pending
 Add image slicing (grid → 9 frames)	🔴 Pending
+
+
+####
