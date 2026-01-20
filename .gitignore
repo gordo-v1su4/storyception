@@ -52,6 +52,7 @@ coverage/
 # Lock files (keep bun.lock, ignore others)
 package-lock.json
 yarn.lock
+pnpm-lock.yaml
 
 # Vercel
 .vercel
