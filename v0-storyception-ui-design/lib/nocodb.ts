@@ -2,7 +2,7 @@
  * NocoDB Client for Storyception
  * 
  * Manages story sessions, beats, branches, and keyframes
- * Storage: Garage S3 (bucket: nocodb)
+ * Storage: Nextcloud (with public share links)
  * 
  * Tables:
  * - storyception_sessions: User story sessions
@@ -284,7 +284,7 @@ export interface KeyframeRecord {
   'Grid Row': number
   'Grid Col': number
   'Prompt': string
-  'Image URL (Garage S3)': string
+  'Image URL': string
   'Status': 'pending' | 'generating' | 'ready' | 'error'
   'Created At'?: string
 }
@@ -311,7 +311,7 @@ export async function createKeyframe(keyframe: {
       'Grid Row': keyframe.row,
       'Grid Col': keyframe.col,
       'Prompt': keyframe.prompt,
-      'Image URL (Garage S3)': keyframe.imageUrl || null,
+      'Image URL': keyframe.imageUrl || null,
       'Status': 'pending',
       'Created At': new Date().toISOString(),
     }),
@@ -336,7 +336,7 @@ export async function updateKeyframe(keyframeId: string, updates: Partial<{
   status: 'pending' | 'generating' | 'ready' | 'error'
 }>): Promise<KeyframeRecord> {
   const payload: Record<string, unknown> = {}
-  if (updates.imageUrl) payload['Image URL (Garage S3)'] = updates.imageUrl
+  if (updates.imageUrl) payload['Image URL'] = updates.imageUrl
   if (updates.status) payload['Status'] = updates.status
   
   const result = await nocodbFetch(`/api/v2/tables/${TABLES.keyframes}/records`, {
@@ -368,7 +368,7 @@ export async function bulkCreateKeyframes(keyframes: Array<{
     'Grid Row': kf.row,
     'Grid Col': kf.col,
     'Prompt': kf.prompt,
-    'Image URL (Garage S3)': null,
+    'Image URL': null,
     'Status': 'pending',
     'Created At': new Date().toISOString(),
   }))

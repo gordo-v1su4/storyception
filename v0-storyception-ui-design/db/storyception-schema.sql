@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS storyception_keyframes (
     grid_row INTEGER NOT NULL CHECK (grid_row BETWEEN 0 AND 2),
     grid_col INTEGER NOT NULL CHECK (grid_col BETWEEN 0 AND 2),
     prompt TEXT,
-    image_url TEXT,  -- Garage S3 URL
+    image_url TEXT,  -- Nextcloud share URL
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'generating', 'ready', 'error')),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES storyception_sessions(session_id),

@@ -97,7 +97,7 @@ TABLES = [
             {"column_name": "grid_row", "title": "Grid Row", "uidt": "Number"},
             {"column_name": "grid_col", "title": "Grid Col", "uidt": "Number"},
             {"column_name": "prompt", "title": "Prompt", "uidt": "LongText"},
-            {"column_name": "image_url", "title": "Image URL (Garage S3)", "uidt": "URL"},
+            {"column_name": "image_url", "title": "Image URL", "uidt": "URL"},
             {"column_name": "status", "title": "Status", "uidt": "SingleSelect", "dtxp": "'pending','generating','ready','error'"},
             {"column_name": "created_at", "title": "Created At", "uidt": "DateTime"}
         ]

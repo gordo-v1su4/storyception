@@ -235,7 +235,7 @@ def main():
         "Grid Row": 1,
         "Grid Col": 1,
         "Prompt": prompt,
-        "Image URL (Garage S3)": public_url,
+        "Image URL": public_url,
         "Status": "ready",
         "Created At": datetime.now().isoformat()
     }

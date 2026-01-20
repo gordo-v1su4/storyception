@@ -173,7 +173,7 @@ def main():
     """Run the full pipeline test"""
     print("=" * 60)
     print("STORYCEPTION FULL PIPELINE TEST")
-    print("fal.ai -> Garage S3 -> NocoDB")
+    print("fal.ai -> Nextcloud -> NocoDB")
     print("=" * 60)
     
     if not check_env():
@@ -208,7 +208,7 @@ def main():
         "Grid Row": 1,
         "Grid Col": 1,
         "Prompt": "cinematic portrait, dramatic lighting, film grain",
-        "Image URL (Garage S3)": public_url,  # Now stores Nextcloud share URL
+        "Image URL": public_url,
         "Status": "ready",
         "Created At": datetime.now().isoformat()
     }
