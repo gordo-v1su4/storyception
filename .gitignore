@@ -3,19 +3,17 @@ node_modules/
 .pnp/
 .pnp.js
 
-# Environment files
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-*.env
-
-# Build outputs
+# Next.js build output
 .next/
 out/
 build/
 dist/
+dev/
+
+# Environment files
+.env
+.env.*
+*.env
 
 # Debug logs
 npm-debug.log*
@@ -43,6 +41,10 @@ __pycache__/
 venv/
 ENV/
 
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
 # Test outputs
 *.log
 coverage/
@@ -51,9 +53,8 @@ coverage/
 package-lock.json
 yarn.lock
 
-# Misc
-*.local
-.turbo
+# Vercel
+.vercel
 
 # BMAD agents (large framework, not part of project)
 bmad/
@@ -63,3 +64,7 @@ bmad/
 .claude/
 .agent/
 .cursor/
+
+# Misc
+*.local
+.turbo
