@@ -1,0 +1,9 @@
+{
+  "prompt": "cinematic portrait of a person",
+  "image_urls": ["https://fal.media/files/elephant/xABcLDlqwzOC0wh78hXBf.png"],
+  "aspect_ratio": "16:9",
+  "resolution": "1K",
+  "num_images": 1,
+  "output_format": "png",
+  "sync_mode": true
+}
