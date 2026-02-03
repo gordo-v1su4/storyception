@@ -83,8 +83,17 @@ export async function POST(request: NextRequest) {
   try {
     const body: ImageGenerationRequest = await request.json()
     
+    console.log('📸 Image generation request:', {
+      storyId: body.storyId,
+      beatId: body.beatId,
+      hasReferenceImage: !!(body.referenceImageUrl || body.referenceImageBase64),
+      method: body.method,
+      beatLabel: body.beatLabel,
+    })
+    
     // Validate
     if (!body.storyId || !body.beatId) {
+      console.log('❌ Missing storyId or beatId')
       return NextResponse.json(
         { error: 'storyId and beatId are required' },
         { status: 400 }
@@ -204,10 +213,10 @@ export async function POST(request: NextRequest) {
       })
     }
     
-    return NextResponse.json(
-      { error: 'Either referenceImageUrl/referenceImageBase64 OR basePrompt is required' },
-      { status: 400 }
-    )
+    // CASE 4: No reference image and no base prompt - return dev fallback
+    // This allows the UI to work in development without image generation
+    console.log('⚠️ No reference image or base prompt - returning dev fallback')
+    return devFallbackResponse(body, 'gemini')
     
   } catch (error) {
     console.error('Image Generation Error:', error)
@@ -221,32 +230,104 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Development fallback with placeholder data
-function devFallbackResponse(body: ImageGenerationRequest, method: 'nanobanana' | 'flux+nanobanana') {
-  const placeholderKeyframes: KeyframeImage[] = body.prompts.slice(0, 9).map((prompt, idx) => ({
-    id: idx + 1,
-    url: `/placeholder.jpg`,
-    prompt,
-    position: {
-      row: Math.floor(idx / 3),
-      col: idx % 3,
-    }
+// Cinematic shot types for 3x3 grid keyframe progression
+const SHOT_PROGRESSION = [
+  { type: 'ELS', desc: 'Extreme wide establishing shot', duration: '3s' },
+  { type: 'LS', desc: 'Long shot introducing scene', duration: '3s' },
+  { type: 'MLS', desc: 'Medium long shot showing characters', duration: '3s' },
+  { type: 'MS', desc: 'Medium shot character interaction', duration: '3s' },
+  { type: 'MCU', desc: 'Medium close-up emotional moment', duration: '3s' },
+  { type: 'CU', desc: 'Close-up on key action', duration: '3s' },
+  { type: 'ECU', desc: 'Extreme close-up detail', duration: '3s' },
+  { type: 'Low', desc: 'Low angle power shot', duration: '3s' },
+  { type: 'High', desc: 'High angle overview', duration: '3s' },
+]
+
+/**
+ * Build the master prompt for generating ONE 3x3 grid image
+ * This follows the structure from original_cinematic_grid.md
+ */
+function buildGridPrompt(beatLabel: string, beatDescription: string, style: string = 'cinematic') {
+  const keyframeDescriptions = SHOT_PROGRESSION.map((shot, i) => 
+    `KF${i + 1} [${shot.type} | ${shot.duration}]: ${shot.desc}`
+  ).join('\n')
+
+  return {
+    masterPrompt: `Generate a single 3x3 cinematic contact sheet / storyboard grid for:
+BEAT: ${beatLabel}
+SCENE: ${beatDescription}
+STYLE: ${style}, photoreal, consistent lighting and color grade
+
+The grid must contain 9 panels arranged 3x3, each showing a different shot of the SAME scene with the SAME characters maintaining strict visual continuity.
+
+Shot progression (left-to-right, top-to-bottom):
+${keyframeDescriptions}
+
+REQUIREMENTS:
+- ONE single image containing all 9 keyframes in a 3x3 grid
+- Each panel labeled with KF number and shot type
+- Strict continuity: same subjects, wardrobe, environment, lighting across ALL panels
+- Only action, expression, and camera angle changes between shots
+- Cinematic color grade consistent across entire grid`,
+    
+    keyframeSpecs: SHOT_PROGRESSION.map((shot, i) => ({
+      id: i + 1,
+      shot: shot.type,
+      duration: shot.duration,
+      description: `${shot.desc} - ${beatDescription}`,
+      position: { row: Math.floor(i / 3), col: i % 3 }
+    }))
+  }
+}
+
+// Development fallback - simulates the grid generation flow
+function devFallbackResponse(body: ImageGenerationRequest, method: string) {
+  console.log('🎬 Dev fallback - Building grid prompt for:', body.beatLabel)
+  
+  const beatLabel = body.beatLabel || 'Scene'
+  const beatDesc = body.beatDescription || 'Cinematic moment'
+  const style = body.style || 'cinematic'
+  
+  const { masterPrompt, keyframeSpecs } = buildGridPrompt(beatLabel, beatDesc, style)
+  
+  // In dev mode, use placeholder - in production, this would be the actual grid image URL
+  const gridImageUrl = '/placeholder.jpg'
+  
+  // Simulate the split keyframes (in production, these would be actual cropped URLs from the grid)
+  const keyframes: KeyframeImage[] = keyframeSpecs.map(spec => ({
+    id: spec.id,
+    url: `/placeholder.jpg`, // In production: URLs to individual cropped keyframes
+    prompt: `[KF${spec.id} | ${spec.shot}] ${spec.description}`,
+    position: spec.position,
   }))
+  
+  console.log(`✅ Dev fallback: Grid prompt built with ${keyframes.length} keyframe specs`)
   
   return NextResponse.json({
     success: true,
-    message: `Development mode - ${method} webhook not configured`,
+    message: `Development mode - ${method} webhook not configured. In production, ONE 3x3 grid image will be generated and split into 9 keyframes.`,
     requestId: `dev-${Date.now()}`,
     method,
     status: 'completed',
-    keyframes: placeholderKeyframes,
+    
+    // The main output - ONE grid image that contains all 9 keyframes
+    gridImageUrl,
+    
+    // The split keyframes (cropped from the grid)
+    keyframes,
+    keyframeUrls: keyframes.map(kf => kf.url),
+    
+    // The prompt used to generate the grid
+    gridPrompt: masterPrompt,
+    keyframeSpecs,
+    
     metadata: {
       beatId: body.beatId,
       branchId: body.branchId,
       referenceUsed: !!(body.referenceImageUrl || body.referenceImageBase64),
       generatedAt: new Date().toISOString(),
     }
-  } as ImageGenerationResponse)
+  })
 }
 
 // GET - API info

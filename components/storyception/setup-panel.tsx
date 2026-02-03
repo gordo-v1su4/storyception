@@ -32,36 +32,76 @@ export function SetupPanel({ onClose, onGenerate }: SetupPanelProps) {
   // Images optional for demo/testing - will be required when N8N integration is complete
   const canGenerate = selectedArch !== null && selectedOutcome !== null
 
+  const [error, setError] = useState<string | null>(null)
+
   const handleGenerate = async () => {
     if (!canGenerate) return
     
     setIsGenerating(true)
+    setError(null)
 
-    // Simulate generation (will be replaced with N8N API call)
-    setTimeout(() => {
-      const beatStructure = beatStructures[selectedArch ?? 0]
+    try {
+      // Call the real story generation API
+      const response = await fetch('/api/story/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          archetypeIndex: selectedArch,
+          archetypeName: archetypes[selectedArch!].title,
+          outcomeName: outcomes[selectedOutcome!].title,
+          referenceImages: uploadedImages,
+          totalDuration: 90,
+        }),
+      })
 
-      const beats: StoryBeat[] = beatStructure.map((beat, idx) => {
-        const percentage = getBeatPercentage(beat.id)
-        const totalDuration = 90
-        const duration = (percentage / 100) * totalDuration
+      const data = await response.json()
 
+      if (!data.success) {
+        throw new Error(data.error || 'Story generation failed')
+      }
+
+      // Store session ID for future use
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('storyception_session', data.storyId)
+      }
+
+      // Convert API response to StoryBeat format
+      const beats: StoryBeat[] = data.beats.map((beat: {
+        id: string
+        label: string
+        scene_description: string
+        duration_seconds: number
+        keyframe_prompts: string[]
+        index: number
+        status: string
+        gridImageUrl: string | null
+      }, idx: number) => {
+        const percentage = getBeatPercentage(beat.id) || (100 / data.beats.length)
+        
         return {
           id: idx + 1,
           label: beat.label,
-          duration: `${duration.toFixed(1)}s`,
+          duration: `${beat.duration_seconds || 6}s`,
           percentOfTotal: percentage,
           img: `linear-gradient(135deg, hsl(${180 + idx * 15}, 70%, ${15 + idx * 2}%), hsl(${195 + idx * 10}, 60%, ${10 + idx * 2}%))`,
-          desc: beat.desc,
+          desc: beat.scene_description,
           beatId: beat.id,
-          generatedIdea: autoGenerateBeatIdea(beat.id, beat.label),
+          generatedIdea: beat.scene_description,
+          keyframePrompts: beat.keyframe_prompts,
+          status: beat.status,
+          gridImageUrl: beat.gridImageUrl,
         }
       })
 
+      console.log(`✅ Story generated: ${data.storyId} with ${beats.length} beats`)
       onGenerate(beats, selectedArch ?? 0)
       setIsGenerating(false)
       onClose()
-    }, 2000)
+    } catch (err) {
+      console.error('Story generation error:', err)
+      setError(err instanceof Error ? err.message : 'Failed to generate story')
+      setIsGenerating(false)
+    }
   }
 
   return (
@@ -123,8 +163,26 @@ export function SetupPanel({ onClose, onGenerate }: SetupPanelProps) {
                 className="mt-6 text-center"
               >
                 <div className="text-cyan-400 font-mono text-sm tracking-wider">CRAFTING YOUR STORY</div>
-                <div className="text-zinc-500 text-xs mt-2">Analyzing images & generating beats...</div>
+                <div className="text-zinc-500 text-xs mt-2">Generating story beats with AI...</div>
               </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Error Display */}
+        <AnimatePresence>
+          {error && !isGenerating && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="absolute top-20 left-1/2 -translate-x-1/2 z-30 bg-red-500/20 border border-red-500/50 text-red-400 px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            >
+              <X size={14} />
+              {error}
+              <button onClick={() => setError(null)} className="ml-2 hover:text-red-300">
+                <X size={12} />
+              </button>
             </motion.div>
           )}
         </AnimatePresence>

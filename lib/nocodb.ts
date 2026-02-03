@@ -399,7 +399,7 @@ export function generateKeyframeId(beatId: string, branchId: string | null, fram
   return `${base}-kf-${frameIndex}`
 }
 
-// Nextcloud Configuration (replaced Garage S3 for public URL access)
+// Nextcloud Configuration (S3-compatible storage for public URL access)
 const NEXTCLOUD_URL = process.env.NEXTCLOUD_URL || 'https://nextcloud.v1su4.com'
 const NEXTCLOUD_USER = process.env.NEXTCLOUD_USER || 'admin'
 const NEXTCLOUD_APP_PASSWORD = process.env.NEXTCLOUD_APP_PASSWORD || ''

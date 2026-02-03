@@ -18,9 +18,14 @@ export interface StoryBeat {
   visitedScenes?: string[]       // For loopable beats - track explored scenes
   isConvergence?: boolean        // Fixer point where branches converge
   branchDepth?: number           // 0-4, how deep in branching
-  status?: 'hidden' | 'current' | 'completed'  // Progressive reveal state
+  status?: 'hidden' | 'current' | 'completed' | 'pending' | 'generating' | 'ready' | 'locked'
   visualPrompt?: string          // Prompt used for Nano Banana generation
   scriptText?: string            // AI-generated narrative text
+  
+  // Story generation fields
+  keyframePrompts?: string[]     // 9 prompts for keyframe generation
+  gridImageUrl?: string | null   // URL of generated 3x3 grid image
+  keyframeUrls?: string[]        // Individual keyframe URLs after splitting
 }
 
 export interface TimelineClip {

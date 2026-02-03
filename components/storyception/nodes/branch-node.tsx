@@ -59,145 +59,99 @@ export const BranchNode = memo(({ data }: NodeProps<BranchNodeData>) => {
         style={{ backgroundColor: colors.hex }}
       />
 
+      {/* Fixed 4:5 aspect ratio (320x400) to match story beat nodes */}
       <motion.div
-        initial={{ opacity: 0, scale: 0.8, x: -20 }}
+        initial={{ opacity: 0, scale: 0.9 }}
         animate={{ 
           opacity: isFaded ? 0.4 : 1, 
-          scale: isFaded ? 0.95 : 1, 
-          x: 0 
+          scale: 1
         }}
-        whileHover={{ scale: isFaded ? 0.95 : 1.02 }}
-        whileTap={{ scale: isFaded ? 0.95 : 0.98 }}
+        whileHover={{ scale: isFaded ? 1 : 1.01 }}
+        whileTap={{ scale: isFaded ? 1 : 0.99 }}
         onClick={(e) => {
           e.stopPropagation()
           if (!isLocked) onSelect()
         }}
         className={`
-          w-[220px] rounded-xl overflow-hidden transition-all duration-300
+          w-[320px] h-[400px] overflow-hidden transition-all duration-300 flex flex-col
           ${isLocked && !isSelected ? 'cursor-not-allowed' : 'cursor-pointer'}
-          ${isSelected 
-            ? `${colors.bg} border-2 ${colors.border} shadow-lg`
-            : isFaded
-              ? 'bg-zinc-900/50 border-2 border-dashed border-zinc-700'
-              : `bg-zinc-900/80 border-2 ${colors.border} hover:border-opacity-80`
-          }
+          bg-zinc-900
         `}
         style={{
-          boxShadow: isSelected ? `0 0 20px ${colors.hex}40` : undefined
+          outline: isSelected ? `2px solid ${colors.hex}` : 'none',
+          boxShadow: isSelected ? `0 0 20px ${colors.hex}50` : undefined
         }}
       >
-        {/* Header with branch letter */}
-        <div className={`px-3 py-2 ${isSelected ? colors.bg : 'bg-black/40'} border-b ${colors.border}`}>
+        {/* TOP - Header with path letter and title */}
+        <div className={`px-3 py-2 bg-zinc-950 ${isFaded ? 'opacity-50' : ''}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div 
-                className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs ${
-                  isSelected ? 'bg-black/30 text-white' : `${colors.bg} ${colors.text}`
-                }`}
-                style={{ backgroundColor: isSelected ? colors.hex : undefined }}
+                className="w-6 h-6 flex items-center justify-center shrink-0 font-bold text-[11px]"
+                style={{ backgroundColor: isFaded ? '#3f3f46' : colors.hex, color: '#000' }}
               >
                 {branchLabel}
               </div>
-              <span className={`text-[10px] font-bold uppercase tracking-wider ${isSelected ? 'text-white' : colors.text}`}>
+              <span className={`text-[11px] font-bold uppercase tracking-wide ${isFaded ? 'text-zinc-600' : colors.text}`}>
                 Path {branchLabel}
               </span>
             </div>
-            {isSelected && (
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                className="w-5 h-5 rounded-full flex items-center justify-center"
-                style={{ backgroundColor: colors.hex }}
-              >
-                <Check size={12} className="text-black" />
-              </motion.div>
-            )}
-            {isFaded && (
-              <Lock size={12} className="text-zinc-600" />
-            )}
+            <div className="flex items-center gap-2">
+              <span className={`text-[10px] font-mono ${isFaded ? 'text-zinc-700' : 'text-zinc-500'}`}>{branch.duration}</span>
+              {isSelected && (
+                <div className="w-5 h-5 flex items-center justify-center" style={{ backgroundColor: colors.hex }}>
+                  <Check size={12} className="text-black" />
+                </div>
+              )}
+              {isFaded && <Lock size={12} className="text-zinc-600" />}
+            </div>
           </div>
         </div>
 
-        {/* 9-Frame Preview Grid */}
-        <div className="p-2">
-          <div className="rounded-lg overflow-hidden border border-zinc-800 bg-black">
+        {/* MIDDLE - 3x3 cinematic keyframe grid */}
+        <div className={`p-1 bg-black ${isFaded ? 'opacity-40 grayscale' : ''}`}>
+          <div className="grid grid-cols-3 gap-[1px] bg-zinc-800">
             {hasFrames ? (
-              <div className="grid grid-cols-3 gap-px bg-zinc-800">
-                {frames.slice(0, 9).map((frame, idx) => (
-                  <div key={idx} className="aspect-video relative">
-                    <img 
-                      src={frame} 
-                      alt={`Preview ${idx + 1}`} 
-                      className={`w-full h-full object-cover ${isFaded ? 'grayscale' : ''}`}
-                    />
-                  </div>
-                ))}
-              </div>
+              frames.slice(0, 9).map((frame, idx) => (
+                <div key={idx} className="aspect-video bg-zinc-900 relative">
+                  <img src={frame} alt={`KF${idx + 1}`} className="w-full h-full object-cover" />
+                  <span className="absolute bottom-0 left-0 text-[7px] font-mono text-white/60 bg-black/70 px-1">
+                    {idx + 1}
+                  </span>
+                </div>
+              ))
             ) : (
-              <div className="grid grid-cols-3 gap-px bg-zinc-800">
-                {Array.from({ length: 9 }).map((_, idx) => (
-                  <div 
-                    key={idx} 
-                    className={`aspect-video bg-zinc-900 flex items-center justify-center ${isFaded ? 'opacity-30' : ''}`}
-                  >
-                    <ImageIcon className="w-3 h-3 text-zinc-700" />
-                  </div>
-                ))}
-              </div>
+              Array.from({ length: 9 }).map((_, idx) => (
+                <div key={idx} className="aspect-video bg-zinc-900 flex items-center justify-center relative">
+                  <ImageIcon className="w-4 h-4 text-zinc-700" />
+                  <span className="absolute bottom-0 left-0 text-[7px] font-mono text-zinc-600 px-1">
+                    {idx + 1}
+                  </span>
+                </div>
+              ))
             )}
           </div>
         </div>
-
-        {/* Content */}
-        <div className="px-3 pb-3">
-          <h4 className={`text-xs font-bold mb-1 ${isSelected ? 'text-white' : isFaded ? 'text-zinc-600' : 'text-zinc-200'}`}>
+        
+        {/* BOTTOM - Title, description + select action - MORE SPACE */}
+        <div className={`px-3 py-3 bg-zinc-950 flex-1 ${isFaded ? 'opacity-50' : ''}`}>
+          <h4 className={`text-[11px] font-bold mb-1 ${isSelected ? 'text-white' : isFaded ? 'text-zinc-600' : 'text-zinc-200'}`}>
             {branch.title}
           </h4>
-          
-          <p className={`text-[10px] leading-relaxed line-clamp-2 mb-2 ${isFaded ? 'text-zinc-700' : 'text-zinc-500'}`}>
+          <p className={`text-[10px] line-clamp-3 leading-relaxed mb-3 ${isFaded ? 'text-zinc-700' : 'text-zinc-500'}`}>
             {branch.desc}
           </p>
-
-          {/* Duration & Action */}
-          <div className="flex items-center justify-between">
-            <span className={`text-[9px] font-mono ${isFaded ? 'text-zinc-700' : 'text-zinc-600'}`}>
-              {branch.duration}
-            </span>
-            
-            {!isLocked && !isSelected && (
-              <motion.div 
-                className={`flex items-center gap-1 text-[9px] ${colors.text}`}
-                whileHover={{ x: 3 }}
-              >
-                <span>Select</span>
-                <ArrowRight size={10} />
-              </motion.div>
-            )}
-          </div>
-
-          {/* Generated idea preview */}
-          {branch.generatedIdea && !isFaded && (
-            <div className="mt-2 pt-2 border-t border-zinc-800/50">
-              <div className="flex items-center gap-1.5 mb-1">
-                <Sparkles size={10} className={colors.text} />
-                <span className={`text-[8px] uppercase tracking-wider ${colors.text}`}>Scene</span>
-              </div>
-              <p className="text-[9px] text-zinc-500 italic line-clamp-1">
-                "{branch.generatedIdea}"
-              </p>
-            </div>
+          
+          {!isLocked && !isSelected && (
+            <motion.div 
+              className={`flex items-center justify-end gap-1.5 text-[11px] font-bold ${colors.text}`}
+              whileHover={{ x: 3 }}
+            >
+              <span>Select this path</span>
+              <ArrowRight size={14} />
+            </motion.div>
           )}
         </div>
-
-        {/* Selection indicator bar */}
-        {isSelected && (
-          <motion.div
-            initial={{ scaleX: 0 }}
-            animate={{ scaleX: 1 }}
-            className="absolute bottom-0 left-0 right-0 h-1"
-            style={{ backgroundColor: colors.hex }}
-          />
-        )}
       </motion.div>
 
       {/* Output handle */}

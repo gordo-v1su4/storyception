@@ -1,122 +1,282 @@
 /**
  * Story Generation API Route
  * 
- * Triggers the N8N workflow that:
- * 1. Takes archetype + outcome + reference images
- * 2. Sends to Gemini for story beat generation
- * 3. Returns structured story data
+ * Calls Gemini directly to generate story beats and keyframe prompts
+ * Saves generated story to NocoDB for persistence
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { 
+  createSession, 
+  createBeat, 
+  generateSessionId, 
+  generateBeatId 
+} from '@/lib/nocodb'
 
-const N8N_BASE_URL = process.env.N8N_BASE_URL || 'https://n8n.v1su4.com'
-const N8N_WEBHOOK_STORY = process.env.N8N_WEBHOOK_STORY_GENERATE || '/webhook/story-generate'
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent'
+
+// Beat structures by archetype
+const BEAT_STRUCTURES: Record<number, { id: string; label: string; desc: string }[]> = {
+  0: [ // Hero's Journey (12 beats)
+    { id: 'ordinaryWorld', label: '1. THE ORDINARY WORLD', desc: "The hero's normal life before adventure" },
+    { id: 'callToAdventure', label: '2. THE CALL TO ADVENTURE', desc: 'An inciting incident disrupts comfort' },
+    { id: 'refusal', label: '3. REFUSAL OF THE CALL', desc: 'The hero hesitates or resists' },
+    { id: 'meetingMentor', label: '4. MEETING THE MENTOR', desc: 'A guide offers wisdom or tools' },
+    { id: 'crossingThreshold', label: '5. CROSSING THE THRESHOLD', desc: 'Hero commits and enters the unknown' },
+    { id: 'testsAllies', label: '6. TESTS, ALLIES, ENEMIES', desc: 'Challenges, friends, and foes appear' },
+    { id: 'approach', label: '7. APPROACH TO THE CAVE', desc: 'Nearing the goal with rising danger' },
+    { id: 'ordeal', label: '8. THE ORDEAL', desc: 'Critical confrontation with deepest fears' },
+    { id: 'reward', label: '9. REWARD (SEIZING THE SWORD)', desc: 'Victory and earning the boon' },
+    { id: 'roadBack', label: '10. THE ROAD BACK', desc: 'Journey home begins but not over' },
+    { id: 'resurrection', label: '11. RESURRECTION', desc: 'Final climactic challenge' },
+    { id: 'returnElixir', label: '12. RETURN WITH THE ELIXIR', desc: 'Hero returns transformed' },
+  ],
+  1: [ // Save the Cat (15 beats)
+    { id: 'openingImage', label: '1. OPENING IMAGE', desc: 'Snapshot setting tone and protagonist' },
+    { id: 'setup', label: '2. SETUP', desc: 'World, relationships, and stakes established' },
+    { id: 'themeStated', label: '3. THEME STATED', desc: "Story's deeper message hinted" },
+    { id: 'catalyst', label: '4. CATALYST', desc: 'Inciting incident kicks story into motion' },
+    { id: 'debate', label: '5. DEBATE', desc: 'Protagonist hesitates or questions' },
+    { id: 'breakIntoTwo', label: '6. BREAK INTO TWO', desc: 'Hero commits to the goal, entering Act II' },
+    { id: 'bStory', label: '7. B STORY', desc: 'Subplot emerges (romance, friendship)' },
+    { id: 'funAndGames', label: '8. FUN AND GAMES', desc: 'Promise of premise explored' },
+    { id: 'midpoint', label: '9. MIDPOINT', desc: "Major twist changes story's trajectory" },
+    { id: 'badGuysCloseIn', label: '10. BAD GUYS CLOSE IN', desc: 'Tension ramps, obstacles surround' },
+    { id: 'allIsLost', label: '11. ALL IS LOST', desc: 'Crushing setback, deepest fears confronted' },
+    { id: 'darkNight', label: '12. DARK NIGHT OF THE SOUL', desc: 'Rock bottom, questioning everything' },
+    { id: 'breakIntoThree', label: '13. BREAK INTO THREE', desc: 'New insight sparks path forward' },
+    { id: 'finale', label: '14. FINALE', desc: 'Climax using everything learned' },
+    { id: 'finalImage', label: '15. FINAL IMAGE', desc: 'Closing snapshot showing transformation' },
+  ],
+  2: [ // Story Circle (8 beats)
+    { id: 'you', label: '1. YOU (ZONE OF COMFORT)', desc: 'Character in mundane everyday life' },
+    { id: 'need', label: '2. NEED (WANT SOMETHING)', desc: 'Core desire compels action' },
+    { id: 'go', label: '3. GO (ENTER UNFAMILIAR)', desc: 'Crosses threshold to pursue want' },
+    { id: 'search', label: '4. SEARCH (ADAPT)', desc: 'Acquires new skills to survive' },
+    { id: 'find', label: '5. FIND (GET WHAT THEY WANTED)', desc: 'Goal achieved at significant cost' },
+    { id: 'take', label: '6. TAKE (PAY HEAVY PRICE)', desc: 'Victory followed by losses' },
+    { id: 'return', label: '7. RETURN (FAMILIAR SITUATION)', desc: 'Goes back to where they started' },
+    { id: 'change', label: '8. CHANGE (HAVING CHANGED)', desc: 'Character has grown, lessons remain' },
+  ],
+  3: [ // Three-Act (9 beats)
+    { id: 'exposition', label: '1. EXPOSITION', desc: "Protagonist's ordinary world" },
+    { id: 'incitingIncident', label: '2. INCITING INCIDENT', desc: 'Event disrupts ordinary world' },
+    { id: 'plotPoint1', label: '3. PLOT POINT 1', desc: 'Commits to conflict, enters Act II' },
+    { id: 'risingAction', label: '4. RISING ACTION', desc: 'Escalating challenges, raised stakes' },
+    { id: 'midpoint', label: '5. MIDPOINT', desc: 'Major turning point' },
+    { id: 'plotPoint2', label: '6. PLOT POINT 2', desc: 'Major setback, questioning success' },
+    { id: 'preClimax', label: '7. PRE-CLIMAX', desc: 'Regroups for final confrontation' },
+    { id: 'climax', label: '8. CLIMAX', desc: 'Ultimate showdown, conflict resolved' },
+    { id: 'denouement', label: '9. DÉNOUEMENT', desc: 'Loose ends tied, new status quo' },
+  ],
+}
 
 export interface StoryGenerationRequest {
   archetypeIndex: number
   archetypeName: string
-  outcomeIndex: number
+  outcomeIndex?: number
   outcomeName: string
-  referenceImages?: string[]  // Base64 encoded images
-  totalDuration?: number      // Target duration in seconds (default 90)
+  referenceImages?: string[]
+  totalDuration?: number
 }
 
 export interface GeneratedBeat {
   id: string
   label: string
-  description: string
-  duration: number
-  percentage: number
-  sceneIdea: string
-  imagePrompts: string[]  // 9 prompts for the keyframe grid
+  scene_description: string
+  duration_seconds: number
+  keyframe_prompts: string[]
+  index: number
+  status: string
+  gridImageUrl: string | null
+  keyframeUrls: string[]
 }
 
 export interface StoryGenerationResponse {
   success: boolean
   storyId: string
+  title: string
+  logline: string
+  archetype: string
+  outcome: string
+  beatCount: number
   beats: GeneratedBeat[]
-  metadata: {
-    archetype: string
-    outcome: string
-    totalDuration: number
-    generatedAt: string
-  }
+  generatedAt: string
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: StoryGenerationRequest = await request.json()
-    
-    // Validate required fields
-    if (body.archetypeIndex === undefined || body.outcomeIndex === undefined) {
+
+    // Validate
+    if (!GEMINI_API_KEY) {
       return NextResponse.json(
-        { error: 'archetypeIndex and outcomeIndex are required' },
-        { status: 400 }
+        { success: false, error: 'GEMINI_API_KEY not configured' },
+        { status: 500 }
       )
     }
-    
-    // Prepare payload for N8N workflow
-    const payload = {
-      archetype: {
-        index: body.archetypeIndex,
-        name: body.archetypeName,
-      },
-      outcome: {
-        index: body.outcomeIndex,
-        name: body.outcomeName,
-      },
-      referenceImages: body.referenceImages || [],
-      config: {
-        totalDuration: body.totalDuration || 90,
-        generateImagePrompts: true,
-        keyframesPerBeat: 9,
-      },
-      timestamp: new Date().toISOString(),
+
+    const archetypeIndex = body.archetypeIndex ?? 1
+    const archetypeName = body.archetypeName || 'Save the Cat'
+    const outcomeName = body.outcomeName || 'Happy Ending'
+    const totalDuration = body.totalDuration || 90
+
+    const beats = BEAT_STRUCTURES[archetypeIndex] || BEAT_STRUCTURES[1]
+
+    // Build prompt
+    const prompt = `You are an expert screenwriter and storyboard artist.
+
+Generate a cohesive story following the ${archetypeName} structure with ${beats.length} beats.
+
+Story Structure: ${archetypeName}
+Desired Outcome: ${outcomeName}
+Total Duration: ${totalDuration} seconds
+
+For EACH beat, provide:
+1. A vivid scene description (2-3 sentences)
+2. Exactly 9 keyframe prompts for image generation (arranged in a 3x3 grid)
+
+The 9 keyframe prompts should follow this shot progression:
+- KF1: Wide establishing shot
+- KF2: Medium shot introducing characters  
+- KF3: Close-up on protagonist's face/emotion
+- KF4: Action or movement shot
+- KF5: Central dramatic moment (center of grid)
+- KF6: Reaction shot
+- KF7: Environmental detail or symbol
+- KF8: Character interaction
+- KF9: Closing moment of the beat
+
+Each keyframe prompt must be a detailed, cinematic description (30-50 words) suitable for AI image generation. Include: camera angle, lighting mood, character actions, atmospheric details.
+
+The beats to fill are:
+${beats.map((b, i) => `${i + 1}. ${b.label}: ${b.desc}`).join('\n')}
+
+RESPOND IN THIS EXACT JSON FORMAT:
+{
+  "story_title": "Generated Story Title",
+  "story_logline": "One sentence story summary",
+  "beats": [
+    {
+      "id": "beatId",
+      "label": "Beat Label", 
+      "scene_description": "Vivid scene description...",
+      "duration_seconds": 6,
+      "keyframe_prompts": ["KF1: Wide shot prompt...", "KF2: ...", ... 9 total]
     }
-    
-    // Trigger N8N webhook
-    const response = await fetch(`${N8N_BASE_URL}${N8N_WEBHOOK_STORY}`, {
+  ]
+}
+
+Generate a compelling ${outcomeName.toLowerCase()} story now.`
+
+    // Call Gemini API directly
+    const geminiResponse = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.8,
+          responseMimeType: 'application/json',
+        },
+      }),
     })
-    
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('N8N Story Generation Error:', errorText)
-      
-      // Return mock data for development if N8N is not configured
-      if (response.status === 404) {
-        return NextResponse.json({
-          success: true,
-          message: 'Development mode - N8N webhook not configured',
-          storyId: `dev-${Date.now()}`,
-          beats: [],
-          metadata: {
-            archetype: body.archetypeName,
-            outcome: body.outcomeName,
-            totalDuration: body.totalDuration || 90,
-            generatedAt: new Date().toISOString(),
-          }
+
+    if (!geminiResponse.ok) {
+      const errorText = await geminiResponse.text()
+      console.error('Gemini API Error:', errorText)
+      return NextResponse.json(
+        { success: false, error: `Gemini API error: ${geminiResponse.status}` },
+        { status: 500 }
+      )
+    }
+
+    const geminiData = await geminiResponse.json()
+
+    // Parse response
+    const textContent = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
+
+    let storyData
+    try {
+      storyData = JSON.parse(textContent)
+    } catch {
+      // Try extracting from markdown code block
+      const jsonMatch = textContent.match(/```json\n?([\s\S]*?)\n?```/)
+      if (jsonMatch) {
+        storyData = JSON.parse(jsonMatch[1])
+      } else {
+        console.error('Failed to parse Gemini response:', textContent.substring(0, 500))
+        return NextResponse.json(
+          { success: false, error: 'Failed to parse story response' },
+          { status: 500 }
+        )
+      }
+    }
+
+    // Generate session ID
+    const sessionId = generateSessionId()
+
+    // Enrich beats with IDs
+    const enrichedBeats: GeneratedBeat[] = (storyData.beats || []).map(
+      (beat: Partial<GeneratedBeat>, index: number) => ({
+        ...beat,
+        id: generateBeatId(sessionId, index),
+        index,
+        status: 'pending',
+        gridImageUrl: null,
+        keyframeUrls: [],
+      })
+    )
+
+    // === SAVE TO NOCODB ===
+    try {
+      // Create session record
+      await createSession({
+        sessionId,
+        archetype: archetypeName,
+        outcome: outcomeName,
+        referenceImageUrl: body.referenceImages?.[0] || undefined,
+        totalBeats: enrichedBeats.length,
+      })
+
+      // Create beat records
+      for (const beat of enrichedBeats) {
+        const beatWeight = 1 / enrichedBeats.length // Simple equal distribution for now
+        await createBeat({
+          beatId: beat.id,
+          sessionId,
+          beatIndex: beat.index,
+          beatLabel: beat.label,
+          description: beat.scene_description,
+          duration: `${beat.duration_seconds || 6}s`,
+          percentOfTotal: Math.round(beatWeight * 100),
         })
       }
-      
-      throw new Error(`N8N Error: ${response.status} - ${errorText}`)
+
+      console.log(`✅ Story saved to NocoDB: ${sessionId} with ${enrichedBeats.length} beats`)
+    } catch (nocoError) {
+      // Log but don't fail - story still works without persistence
+      console.error('⚠️ Failed to save to NocoDB (continuing anyway):', nocoError)
     }
-    
-    const result = await response.json()
-    
-    return NextResponse.json({
+
+    const response: StoryGenerationResponse = {
       success: true,
-      ...result,
-    })
-    
+      storyId: sessionId,
+      title: storyData.story_title || 'Untitled Story',
+      logline: storyData.story_logline || '',
+      archetype: archetypeName,
+      outcome: outcomeName,
+      beatCount: enrichedBeats.length,
+      beats: enrichedBeats,
+      generatedAt: new Date().toISOString(),
+    }
+
+    return NextResponse.json(response)
   } catch (error) {
     console.error('Story Generation Error:', error)
     return NextResponse.json(
-      { 
+      {
         success: false,
         error: error instanceof Error ? error.message : 'Story generation failed',
       },
@@ -125,23 +285,17 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET - Check story generation status
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const storyId = searchParams.get('storyId')
-  
-  if (!storyId) {
-    return NextResponse.json({
-      message: 'Story Generation API',
-      usage: 'POST with archetypeIndex, outcomeIndex, and optional referenceImages',
-      endpoint: N8N_WEBHOOK_STORY,
-    })
-  }
-  
-  // TODO: Implement story status check via NocoDB or N8N execution status
+// GET - API info
+export async function GET() {
   return NextResponse.json({
-    storyId,
-    status: 'pending',
-    message: 'Story status check not yet implemented',
+    message: 'Story Generation API (Direct Gemini)',
+    usage: 'POST with archetypeIndex, archetypeName, outcomeName',
+    archetypes: [
+      { index: 0, name: "Hero's Journey", beats: 12 },
+      { index: 1, name: 'Save the Cat', beats: 15 },
+      { index: 2, name: 'Story Circle', beats: 8 },
+      { index: 3, name: 'Three-Act', beats: 9 },
+    ],
+    outcomes: ['Happy Ending', 'Tragedy', 'Redemption', 'Ambiguous'],
   })
 }

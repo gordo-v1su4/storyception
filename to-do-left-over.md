@@ -26,11 +26,12 @@ Full session test with 9 keyframes	✅
 
 ❌ NEEDS FIXING (from your feedback):
 Task	Status
-9 keyframes in ONE image (not 9 separate)	🔴 Pending
-Use reference image in generation	🔴 Pending
+9 keyframes in ONE image (not 9 separate)	✅ Done (Gemini generates 3x3 grid)
+Use reference image in generation	✅ Done (Gemini workflow uses ref image)
+Gemini workflow → Nextcloud storage	✅ Done (replaced Garage S3)
 Add thumbnail attachments to NocoDB	🔴 Pending
 Build narrative prompt from DB columns	🔴 Pending
-Add image slicing (grid → 9 frames)	🔴 Pending
+Add image slicing (grid → 9 frames)	🟡 Partial (grid uploaded, client-side split needed)
 
 
 ####
