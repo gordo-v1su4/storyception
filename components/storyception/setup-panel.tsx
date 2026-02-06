@@ -10,7 +10,7 @@ import { getBeatPercentage, autoGenerateBeatIdea } from "@/lib/story-generator"
 
 interface SetupPanelProps {
   onClose: () => void
-  onGenerate: (beats: StoryBeat[], archIdx: number, referenceImageUrl?: string, storyId?: string) => void
+  onGenerate: (beats: StoryBeat[], archIdx: number, referenceImageUrl?: string, storyId?: string, title?: string, logline?: string) => void
 }
 
 export function SetupPanel({ onClose, onGenerate }: SetupPanelProps) {
@@ -117,7 +117,7 @@ export function SetupPanel({ onClose, onGenerate }: SetupPanelProps) {
       })
 
       console.log(`✅ Story generated: ${data.storyId} with ${beats.length} beats`)
-      onGenerate(beats, selectedArch ?? 0, uploadedUrls[0], data.storyId)
+      onGenerate(beats, selectedArch ?? 0, uploadedUrls[0], data.storyId, data.title, data.logline)
       setIsGenerating(false)
       onClose()
     } catch (err) {

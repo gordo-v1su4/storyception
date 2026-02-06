@@ -20,7 +20,10 @@ export default function StoryceptionPage() {
 
   const [currentBeatIndex, setCurrentBeatIndex] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null) // For character consistency
+  const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null)
+  const [archetypeIndex, setArchetypeIndex] = useState(0)
+  const [storyTitle, setStoryTitle] = useState('')
+  const [storyLogline, setStoryLogline] = useState('')
 
   // Load existing session on mount
   useEffect(() => {
@@ -105,17 +108,16 @@ export default function StoryceptionPage() {
     loadExistingSession()
   }, [])
 
-  const handleGenerate = (beats: StoryBeat[], archIdx: number, refImageUrl?: string, storyId?: string) => {
+  const handleGenerate = (beats: StoryBeat[], archIdx: number, refImageUrl?: string, storyId?: string, title?: string, logline?: string) => {
     setStoryBeats(beats)
     setShowModal(false)
     setCurrentBeatIndex(0)
+    setArchetypeIndex(archIdx)
     setHistory([{ beats, timestamp: Date.now(), action: "Initial generation" }])
-    if (refImageUrl) {
-      setReferenceImageUrl(refImageUrl)
-    }
-    if (storyId) {
-      setSessionId(storyId)
-    }
+    if (refImageUrl) setReferenceImageUrl(refImageUrl)
+    if (storyId) setSessionId(storyId)
+    if (title) setStoryTitle(title)
+    if (logline) setStoryLogline(logline)
   }
 
   const handleNewStory = () => {
@@ -217,6 +219,9 @@ export default function StoryceptionPage() {
           onUpdateBeat={handleUpdateBeat}
           referenceImageUrl={referenceImageUrl}
           sessionId={sessionId}
+          archetypeIndex={archetypeIndex}
+          storyTitle={storyTitle}
+          storyLogline={storyLogline}
         />
       ) : (
         <StoryCanvas

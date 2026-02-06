@@ -34,41 +34,9 @@ const NEXTCLOUD_SHARE_API_URL = `${NEXTCLOUD_BASE_URL}/ocs/v2.php/apps/files_sha
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
+// Grid prompt moved to /api/images/generate - this function is kept for reference only
 function buildGridPrompt(beatLabel: string, beatDescription: string): string {
-  return `You are an award-winning trailer director and storyboard artist.
-
-TASK: Transform the reference image into a cinematic 3x3 grid storyboard.
-
-SCENE: ${beatLabel}
-DESCRIPTION: ${beatDescription}
-STYLE: cinematic, photoreal, film quality, dramatic lighting
-
-OUTPUT: Generate ONE single image containing a 3×3 grid (9 panels total).
-
-CRITICAL RULES:
-- The SAME character from the reference must appear in all 9 panels
-- Maintain strict continuity: same person, same wardrobe, same environment, same lighting
-- Only change: camera angle, framing, action, expression between panels
-- Do NOT add text, labels, or watermarks on the image
-- Photoreal quality, cinematic color grade consistent across all panels
-
-SHOT PROGRESSION (reading left-to-right, top-to-bottom):
-Panel 1: Extreme wide establishing shot - full environment visible
-Panel 2: Wide shot - character in environment context
-Panel 3: Medium-long shot - character approaching or moving
-Panel 4: Medium shot - character interaction or key action
-Panel 5: Medium close-up - emotional peak moment (center of grid)
-Panel 6: Close-up - intense facial expression or reaction
-Panel 7: Extreme close-up - detail shot (eyes, hands, object)
-Panel 8: Low angle power shot - dramatic perspective
-Panel 9: Wide closing shot - resolution or transition moment
-
-REQUIREMENTS:
-- One cohesive image with all 9 shots in a 3x3 grid layout
-- Thin black borders between panels
-- 16:9 aspect ratio for the full grid
-- NO TEXT OR LABELS - pure visual storytelling
-- Cinematic lighting and color grading throughout`
+  return `PHOTOREAL cinematic 3x3 grid storyboard for: ${beatLabel} - ${beatDescription}`
 }
 
 async function nextcloudCreateFolder(path: string) {
@@ -543,66 +511,8 @@ Generate a compelling ${outcomeName.toLowerCase()} story now.`
       console.error('⚠️ Failed to save to NocoDB (continuing anyway):', nocoError)
     }
 
-    // === OPTIONAL: GENERATE IMAGES FOR FIRST BEAT ===
-    const referenceImageUrl = body.referenceImages?.[0]
-    const canGenerateImages = Boolean(
-      referenceImageUrl && FAL_KEY && NEXTCLOUD_APP_PASSWORD && NEXTCLOUD_USERNAME && NEXTCLOUD_BASE_URL
-    )
-
-    if (canGenerateImages && enrichedBeats.length > 0) {
-      const firstBeat = enrichedBeats[0]
-      try {
-        const uploadRoot = (NEXTCLOUD_UPLOAD_PATH || '/Storyception')
-          .replace(/^\/+/, '')
-          .replace(/\/+$/, '') || 'Storyception'
-
-        const gridPrompt = buildGridPrompt(firstBeat.label, firstBeat.scene_description)
-        const gridBuffer = await generateGridWithFal(referenceImageUrl as string, gridPrompt)
-
-        if (gridBuffer) {
-          const gridPath = `${uploadRoot}/${sessionId}/${firstBeat.id}/grid-4k.png`
-          const gridUploaded = await nextcloudUpload(gridBuffer, gridPath)
-          const gridShareUrl = gridUploaded ? await nextcloudCreateShare(gridPath) : null
-
-          const keyframeBuffers = await sliceGridIntoKeyframes(gridBuffer)
-          const keyframeUrls: string[] = []
-          const thumbnailUrls: string[] = []
-
-          for (let i = 0; i < keyframeBuffers.length; i++) {
-            const keyframePath = `${uploadRoot}/${sessionId}/${firstBeat.id}/keyframe-${i + 1}.png`
-            const uploaded = await nextcloudUpload(keyframeBuffers[i], keyframePath)
-            if (uploaded) {
-              const shareUrl = await nextcloudCreateShare(keyframePath)
-              if (shareUrl) keyframeUrls.push(shareUrl)
-            }
-
-            const thumbnailBuffer = await generateThumbnail(keyframeBuffers[i], 200)
-            const thumbnailPath = `${uploadRoot}/${sessionId}/${firstBeat.id}/thumb-${i + 1}.png`
-            const thumbUploaded = await nextcloudUpload(thumbnailBuffer, thumbnailPath)
-            if (thumbUploaded) {
-              const thumbShareUrl = await nextcloudCreateShare(thumbnailPath)
-              if (thumbShareUrl) thumbnailUrls.push(thumbShareUrl)
-            }
-          }
-
-          for (let i = 0; i < keyframeBuffers.length; i++) {
-            const keyframeId = generateKeyframeId(firstBeat.id, null, i + 1)
-            await updateKeyframeImageRecord(
-              keyframeId,
-              keyframeUrls[i] || null,
-              thumbnailUrls[i] || null
-            )
-          }
-
-          await updateBeatKeyframesJson(firstBeat.id, gridShareUrl, keyframeUrls)
-
-          firstBeat.gridImageUrl = gridShareUrl
-          firstBeat.keyframeUrls = keyframeUrls
-        }
-      } catch (imageError) {
-        console.error('⚠️ Image generation failed (continuing anyway):', imageError)
-      }
-    }
+    // Image generation is now on-demand via /api/images/generate
+    // The frontend triggers it per-beat as the user progresses
 
     const response: StoryGenerationResponse = {
       success: true,

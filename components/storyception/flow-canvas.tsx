@@ -22,7 +22,7 @@ import {
 import "@xyflow/react/dist/style.css"
 import { StoryBeatNode } from "./nodes/story-beat-node"
 import { BranchNode } from "./nodes/branch-node"
-import { generateBranchOptions } from "@/lib/story-generator"
+// Branch generation is now on-demand via /api/story/branches
 import type { StoryBeat, BranchOption } from "@/lib/types"
 import { motion } from "framer-motion"
 import { ArrowRight, ArrowDown, Move, RotateCcw, Lock, Unlock, Wand2, Eye, EyeOff } from "lucide-react"
@@ -43,8 +43,11 @@ interface FlowCanvasProps {
   onSelectBeat: (id: number | null) => void
   onUpdateBeat: (id: number, updates: Partial<StoryBeat>) => void
   onAddBeat?: (beat: StoryBeat, afterBeatId: number) => void
-  referenceImageUrl?: string | null  // For character consistency in keyframe generation
-  sessionId?: string | null           // Story session ID
+  referenceImageUrl?: string | null
+  sessionId?: string | null
+  archetypeIndex?: number
+  storyTitle?: string
+  storyLogline?: string
 }
 
 // Default edge options - bezier curves with cyan arrows
@@ -64,7 +67,7 @@ const defaultEdgeOptions = {
 }
 
 // Inner component that has access to useReactFlow
-function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, onAddBeat, referenceImageUrl, sessionId }: FlowCanvasProps) {
+function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, onAddBeat, referenceImageUrl, sessionId, archetypeIndex = 0, storyTitle = '', storyLogline = '' }: FlowCanvasProps) {
   const [expandedBranches, setExpandedBranches] = useState<Set<number>>(new Set())
   const [layout, setLayout] = useState<LayoutDirection>("vertical") // Vertical = top-to-bottom flow
   const [locked, setLocked] = useState(false)
@@ -121,10 +124,10 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
     })
   }, [])
 
-  // Generate keyframes for a beat using the image generation API
+  // Generate keyframes for a beat using the on-demand image generation API
   const generateKeyframes = useCallback(async (beat: StoryBeat): Promise<string[] | null> => {
-    if (!sessionId) {
-      console.log('⚠️ No session ID, skipping keyframe generation')
+    if (!sessionId || !referenceImageUrl) {
+      console.log('⚠️ No session ID or reference image, skipping keyframe generation')
       return null
     }
 
@@ -135,13 +138,13 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          storyId: sessionId,
+          sessionId,
           beatId: beat.beatId || `beat-${beat.id}`,
-          referenceImageUrl: referenceImageUrl,
+          referenceImageUrl,
           beatLabel: beat.label,
-          beatDescription: beat.desc || beat.generatedIdea,
-          method: 'auto', // Try Gemini first, fallback to fal.ai
-          prompts: beat.keyframePrompts || [], // Use pre-generated prompts if available
+          beatDescription: beat.desc || beat.generatedIdea || '',
+          beatDuration: beat.duration,
+          beatPercent: beat.percentOfTotal,
         }),
       })
 
@@ -151,33 +154,10 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
       }
 
       const result = await response.json()
-      console.log('📸 Image generation response:', {
-        success: result.success,
-        method: result.method,
-        gridImageUrl: result.gridImageUrl,
-        keyframesCount: result.keyframes?.length,
-      })
       
-      if (result.success) {
-        // Prefer keyframeUrls (pre-split images) over keyframes array
-        if (result.keyframeUrls && result.keyframeUrls.length > 0) {
-          console.log(`✅ Got ${result.keyframeUrls.length} split keyframe URLs`)
-          return result.keyframeUrls
-        }
-        
-        // Extract URLs from keyframes array
-        if (result.keyframes && result.keyframes.length > 0) {
-          const urls = result.keyframes.map((kf: { url: string }) => kf.url)
-          console.log(`✅ Extracted ${urls.length} keyframe URLs from response`)
-          return urls
-        }
-        
-        // Fallback: use the grid image URL directly (will need to be split client-side or displayed as grid)
-        if (result.gridImageUrl) {
-          console.log('✅ Got grid image URL (not split):', result.gridImageUrl)
-          // Return as array of 9 for the grid display (same image repeated, or we could split client-side)
-          return Array(9).fill(result.gridImageUrl)
-        }
+      if (result.success && result.keyframeUrls?.length > 0) {
+        console.log(`✅ Got ${result.keyframeUrls.length} keyframe URLs`)
+        return result.keyframeUrls
       }
       
       console.log('⚠️ No keyframes in response')
@@ -265,8 +245,44 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
           onSelect: () => onSelectBeat(beat.id),
           onToggleBranch: () => {
             if (!beat.branches || beat.branches.length === 0) {
-              const branches = generateBranchOptions(beat)
-              onUpdateBeat(beat.id, { branches })
+              // Generate branches on-demand via Claude API
+              if (sessionId) {
+                const prevBeats = beats.slice(0, idx).map(b => ({
+                  label: b.label,
+                  description: b.desc || b.generatedIdea || '',
+                  selectedBranch: b.branches?.find(br => br.selected)?.title,
+                }))
+                fetch('/api/story/branches', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    sessionId,
+                    beatId: beat.beatId || `beat-${beat.id}`,
+                    beatLabel: beat.label,
+                    beatDescription: beat.desc || beat.generatedIdea || '',
+                    archetypeIndex,
+                    archetypeBeatId: beat.beatId?.split('-').pop() || '',
+                    storyTitle,
+                    storyLogline,
+                    previousBeats: prevBeats,
+                  }),
+                })
+                  .then(r => r.json())
+                  .then(data => {
+                    if (data.success && data.branches?.length > 0) {
+                      const branches: BranchOption[] = data.branches.map((b: { id: number; title: string; description: string; type: string; duration: string }) => ({
+                        id: b.id,
+                        title: b.title,
+                        desc: b.description,
+                        type: b.type,
+                        duration: b.duration,
+                        selected: false,
+                      }))
+                      onUpdateBeat(beat.id, { branches })
+                    }
+                  })
+                  .catch(err => console.error('Branch gen failed:', err))
+              }
             }
             toggleBranch(beat.id)
           },
