@@ -119,7 +119,7 @@ async function nextcloudShare(path: string): Promise<string | null> {
 
 // ============ FAL.AI ============
 
-function buildGridPrompt(beatLabel: string, description: string, duration?: string, percent?: number): string {
+function buildGridPrompt(beatLabel: string, description: string, duration?: string, percent?: number, branchContext?: string): string {
   // Describe the time span so fal.ai understands how much story to cover
   let timeContext = ''
   if (percent && percent >= 15) {
@@ -130,8 +130,13 @@ function buildGridPrompt(beatLabel: string, description: string, duration?: stri
     timeContext = 'This is a brief moment — the 9 frames are close together in time, same location.'
   }
 
+  // If there's branch context, weave it into the scene description so images reflect the chosen path
+  const sceneDescription = branchContext
+    ? `${description} — Building on: ${branchContext}`
+    : description
+
   return `Photoreal cinematic 3x3 contact sheet. 9 panels edge-to-edge, NO borders, NO gaps, 16:9.
-Beat: ${beatLabel} — ${description}${duration ? ` (${duration} of screen time)` : ''}
+Beat: ${beatLabel} — ${sceneDescription}${duration ? ` (${duration} of screen time)` : ''}
 The reference person is the lead actor. Match their face exactly in every panel. Cinematic anamorphic film look. No text, no labels, no illustration.
 Each panel is a different MOMENT in this story beat — time passes, locations can shift, actions progress. Not just camera angle changes. Tell the story visually across the 9 frames like scenes from a trailer. The character stays consistent but the story moves forward through each frame.${timeContext ? ' ' + timeContext : ''}`
 }
@@ -195,12 +200,13 @@ export interface ImageGenRequest {
   beatDescription: string
   beatDuration?: string     // e.g. "6s", "18s"
   beatPercent?: number      // percentage of total story (1-20)
+  branchContext?: string    // Context from the player's branch choice leading into this beat
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: ImageGenRequest = await request.json()
-    const { sessionId, beatId, referenceImageUrl, beatLabel, beatDescription, beatDuration, beatPercent } = body
+    const { sessionId, beatId, referenceImageUrl, beatLabel, beatDescription, beatDuration, beatPercent, branchContext } = body
 
     if (!FAL_KEY) return NextResponse.json({ success: false, error: 'FAL_KEY not configured' }, { status: 500 })
     if (!referenceImageUrl) return NextResponse.json({ success: false, error: 'referenceImageUrl required' }, { status: 400 })
@@ -216,8 +222,11 @@ export async function POST(request: NextRequest) {
     await setKeyframeStatus(beatId, 'processing')
     await nocodbPatchByField(NOCODB_TABLE_BEATS, 'Beat ID', beatId, { Status: 'generating' })
 
-    // 2. Generate grid with fal.ai (pass all reference images)
-    const prompt = buildGridPrompt(beatLabel, beatDescription, beatDuration, beatPercent)
+    // 2. Generate grid with fal.ai (pass all reference images + branch context)
+    if (branchContext) {
+      console.log(`🎬 [${beatId}] Branch context: ${branchContext}`)
+    }
+    const prompt = buildGridPrompt(beatLabel, beatDescription, beatDuration, beatPercent, branchContext)
     const gridBuffer = await generateGrid(imageUrls, prompt)
 
     if (!gridBuffer) {

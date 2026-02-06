@@ -3,7 +3,7 @@
 import { memo, useState } from "react"
 import { Handle, Position, type NodeProps } from "@xyflow/react"
 import { motion, AnimatePresence } from "framer-motion"
-import { GitBranch, ChevronDown, ImageIcon, Loader2, X, ChevronLeft, ChevronRight } from "lucide-react"
+import { GitBranch, ChevronDown, ImageIcon, Loader2, X, ChevronLeft, ChevronRight, Sparkles } from "lucide-react"
 import type { StoryBeat } from "@/lib/types"
 import { getBeatColorSet } from "@/lib/colors"
 
@@ -30,6 +30,7 @@ export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
   const frames = beat.frames || []
   const hasFrames = frames.length > 0
   const isGenerating = beat.status === 'generating'
+  const isSkeleton = beat.status === 'skeleton' || (!beat.desc && !beat.generatedIdea && !hasFrames && !isGenerating)
 
   // Get handle positions based on layout
 
@@ -92,82 +93,101 @@ export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
           </div>
         </div>
 
-        {/* MIDDLE - 3x3 cinematic keyframe grid */}
+        {/* MIDDLE - 3x3 cinematic keyframe grid or skeleton placeholder */}
         <div className="p-1 bg-black relative">
           {isGenerating && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/80">
               <Loader2 className={`w-8 h-8 ${colors.text} animate-spin`} />
-              <span className="text-[10px] text-zinc-400 mt-2 uppercase tracking-wider">Generating...</span>
+              <span className="text-[10px] text-zinc-400 mt-2 uppercase tracking-wider">
+                {isSkeleton ? 'Crafting scene...' : 'Generating...'}
+              </span>
             </div>
           )}
-          <div className={`grid grid-cols-3 gap-[1px] bg-zinc-800 ${isGenerating ? 'opacity-30' : ''}`}>
-            {hasFrames ? (
-              frames.slice(0, 9).map((frame: string, idx: number) => (
-                <div
-                  key={idx}
-                  className="aspect-video bg-zinc-900 relative cursor-pointer hover:brightness-125 transition-all"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setLightboxIndex(idx)
-                  }}
-                >
-                  <img src={frame} alt={`KF${idx + 1}`} className="w-full h-full object-cover" />
-                  <span className="absolute bottom-0 left-0 text-[7px] font-mono text-white/60 bg-black/70 px-1">
-                    {idx + 1}
-                  </span>
+          {isSkeleton && !isGenerating ? (
+            <div className="flex items-center justify-center h-[140px] bg-zinc-900/50">
+              <div className="text-center px-4">
+                <div className={`w-8 h-8 mx-auto mb-2 rounded-full border-2 border-dashed ${colors.border || 'border-zinc-700'} flex items-center justify-center opacity-40`}>
+                  <Sparkles className="w-4 h-4 text-zinc-500" />
                 </div>
-              ))
-            ) : (
-              Array.from({ length: 9 }).map((_, idx) => (
-                <div key={idx} className="aspect-video bg-zinc-900 flex items-center justify-center relative">
-                  <ImageIcon className="w-4 h-4 text-zinc-700" />
-                  <span className="absolute bottom-0 left-0 text-[7px] font-mono text-zinc-600 px-1">
-                    {idx + 1}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
+                <p className="text-[9px] text-zinc-600 uppercase tracking-wider">
+                  Story continues after you choose a path
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className={`grid grid-cols-3 gap-[1px] bg-zinc-800 ${isGenerating ? 'opacity-30' : ''}`}>
+              {hasFrames ? (
+                frames.slice(0, 9).map((frame: string, idx: number) => (
+                  <div
+                    key={idx}
+                    className="aspect-video bg-zinc-900 relative cursor-pointer hover:brightness-125 transition-all"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setLightboxIndex(idx)
+                    }}
+                  >
+                    <img src={frame} alt={`KF${idx + 1}`} className="w-full h-full object-cover" />
+                    <span className="absolute bottom-0 left-0 text-[7px] font-mono text-white/60 bg-black/70 px-1">
+                      {idx + 1}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                Array.from({ length: 9 }).map((_, idx) => (
+                  <div key={idx} className="aspect-video bg-zinc-900 flex items-center justify-center relative">
+                    <ImageIcon className="w-4 h-4 text-zinc-700" />
+                    <span className="absolute bottom-0 left-0 text-[7px] font-mono text-zinc-600 px-1">
+                      {idx + 1}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
         
         {/* BOTTOM - Scene description + branch button */}
         <div className="px-3 py-3 bg-zinc-950 flex-1">
-          <p className="text-[11px] text-zinc-400 line-clamp-4 mb-3 leading-relaxed">
-            {beat.generatedIdea || beat.desc || "Scene description will appear here..."}
+          <p className={`text-[11px] line-clamp-4 mb-3 leading-relaxed ${isSkeleton ? 'text-zinc-600 italic' : 'text-zinc-400'}`}>
+            {isSkeleton
+              ? "This scene will be written based on your choices..."
+              : (beat.generatedIdea || beat.desc || "Scene description will appear here...")}
           </p>
-          
-          <div className="flex items-center justify-between">
-            {selectedBranch ? (
-              <div className="flex items-center gap-1.5 text-pink-400 flex-1 min-w-0">
+
+          {!isSkeleton && (
+            <div className="flex items-center justify-between">
+              {selectedBranch ? (
+                <div className="flex items-center gap-1.5 text-pink-400 flex-1 min-w-0">
+                  <GitBranch size={14} />
+                  <span className="text-[10px] font-medium truncate">{selectedBranch.title}</span>
+                </div>
+              ) : (
+                <div className="text-[10px] text-zinc-600">Choose your path...</div>
+              )}
+
+              {/* Branch button */}
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggleBranch()
+                }}
+                className={`
+                  text-[10px] px-3 py-2 font-bold uppercase flex items-center gap-1.5 transition-all shrink-0
+                  ${isExpanded
+                    ? "bg-pink-500 text-white"
+                    : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                  }
+                `}
+              >
                 <GitBranch size={14} />
-                <span className="text-[10px] font-medium truncate">{selectedBranch.title}</span>
-              </div>
-            ) : (
-              <div className="text-[10px] text-zinc-600">Choose your path...</div>
-            )}
-            
-            {/* Branch button */}
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={(e) => {
-                e.stopPropagation()
-                onToggleBranch()
-              }}
-              className={`
-                text-[10px] px-3 py-2 font-bold uppercase flex items-center gap-1.5 transition-all shrink-0
-                ${isExpanded 
-                  ? "bg-pink-500 text-white" 
-                  : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-                }
-              `}
-            >
-              <GitBranch size={14} />
-              {beat.branches?.length || 0}
-              <motion.div animate={{ rotate: isExpanded ? 180 : 0 }}>
-                <ChevronDown size={12} />
-              </motion.div>
-            </motion.button>
-          </div>
+                {beat.branches?.length || 0}
+                <motion.div animate={{ rotate: isExpanded ? 180 : 0 }}>
+                  <ChevronDown size={12} />
+                </motion.div>
+              </motion.button>
+            </div>
+          )}
         </div>
       </motion.div>
 

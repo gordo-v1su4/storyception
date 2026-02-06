@@ -7,11 +7,12 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import sharp from 'sharp'
-import { 
-  createSession, 
-  createBeat, 
+import {
+  createSession,
+  updateSession,
+  createBeat,
   bulkCreateKeyframes,
-  generateSessionId, 
+  generateSessionId,
   generateBeatId,
   generateKeyframeId
 } from '@/lib/nocodb'
@@ -304,6 +305,7 @@ export interface StoryGenerationResponse {
   storyId: string
   title: string
   logline: string
+  storySeed: string
   archetype: string
   outcome: string
   beatCount: number
@@ -330,22 +332,28 @@ export async function POST(request: NextRequest) {
 
     const beats = BEAT_STRUCTURES[archetypeIndex] || BEAT_STRUCTURES[1]
 
-    // Build prompt
+    // Build prompt — only generate first 2 beats + story seed for progressive generation
+    const INITIAL_BEAT_COUNT = 2
+    const initialBeats = beats.slice(0, INITIAL_BEAT_COUNT)
+    const remainingBeats = beats.slice(INITIAL_BEAT_COUNT)
+
     const prompt = `You are an expert screenwriter and storyboard artist.
 
-Generate a cohesive story following the ${archetypeName} structure with ${beats.length} beats.
+Create the OPENING of an interactive story following the ${archetypeName} structure (${beats.length} total beats).
 
 Story Structure: ${archetypeName}
 Desired Outcome: ${outcomeName}
 Total Duration: ${totalDuration} seconds
 
-For EACH beat, provide:
+Generate ONLY the first ${INITIAL_BEAT_COUNT} beats with full detail. The remaining beats will be generated progressively as the player makes choices.
+
+For each beat, provide:
 1. A vivid scene description (2-3 sentences)
 2. Exactly 9 keyframe prompts for image generation (arranged in a 3x3 grid)
 
 The 9 keyframe prompts should follow this shot progression:
 - KF1: Wide establishing shot
-- KF2: Medium shot introducing characters  
+- KF2: Medium shot introducing characters
 - KF3: Close-up on protagonist's face/emotion
 - KF4: Action or movement shot
 - KF5: Central dramatic moment (center of grid)
@@ -354,19 +362,25 @@ The 9 keyframe prompts should follow this shot progression:
 - KF8: Character interaction
 - KF9: Closing moment of the beat
 
-Each keyframe prompt must be a detailed, cinematic description (30-50 words) suitable for AI image generation. Include: camera angle, lighting mood, character actions, atmospheric details.
+Each keyframe prompt must be a detailed, cinematic description (30-50 words) suitable for AI image generation.
 
-The beats to fill are:
-${beats.map((b, i) => `${i + 1}. ${b.label}: ${b.desc}`).join('\n')}
+The first ${INITIAL_BEAT_COUNT} beats to generate:
+${initialBeats.map((b, i) => `${i + 1}. ${b.label}: ${b.desc}`).join('\n')}
+
+The REMAINING beats (for context only — do NOT generate these yet):
+${remainingBeats.map((b, i) => `${INITIAL_BEAT_COUNT + i + 1}. ${b.label}: ${b.desc}`).join('\n')}
+
+Also provide a "story_seed" — a 2-3 sentence narrative foundation describing the protagonist, their world, the central conflict, and the tone. This seed will be used as context when generating future beats based on player choices.
 
 RESPOND IN THIS EXACT JSON FORMAT:
 {
   "story_title": "Generated Story Title",
   "story_logline": "One sentence story summary",
+  "story_seed": "2-3 sentence narrative seed describing protagonist, world, conflict, and tone...",
   "beats": [
     {
       "id": "beatId",
-      "label": "Beat Label", 
+      "label": "Beat Label",
       "scene_description": "Vivid scene description...",
       "duration_seconds": 6,
       "keyframe_prompts": ["KF1: Wide shot prompt...", "KF2: ...", ... 9 total]
@@ -374,7 +388,7 @@ RESPOND IN THIS EXACT JSON FORMAT:
   ]
 }
 
-Generate a compelling ${outcomeName.toLowerCase()} story now.`
+Generate a compelling ${outcomeName.toLowerCase()} story opening now.`
 
     // Call Anthropic Claude API with retry on rate limit
     const maxAttempts = 3
@@ -390,7 +404,7 @@ Generate a compelling ${outcomeName.toLowerCase()} story now.`
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 8192,
+          max_tokens: 4096,
           system: 'You are an expert screenwriter and storyboard artist. Always respond with valid JSON only, no markdown code blocks or extra text. Output raw JSON.',
           messages: [
             {
@@ -452,18 +466,41 @@ Generate a compelling ${outcomeName.toLowerCase()} story now.`
 
     // Generate session ID
     const sessionId = generateSessionId()
+    const storySeed = storyData.story_seed || ''
 
-    // Enrich beats with IDs
-    const enrichedBeats: GeneratedBeat[] = (storyData.beats || []).map(
-      (beat: Partial<GeneratedBeat>, index: number) => ({
-        ...beat,
-        id: generateBeatId(sessionId, index),
-        index,
-        status: 'pending',
-        gridImageUrl: null,
-        keyframeUrls: [],
-      })
-    )
+    // Build the full beat list: generated beats (first 2) + skeleton beats (remaining)
+    const generatedBeats = (storyData.beats || []) as Array<Partial<GeneratedBeat>>
+    const allBeats: GeneratedBeat[] = beats.map((beatDef, index) => {
+      const generated = generatedBeats[index]
+      if (generated && index < INITIAL_BEAT_COUNT) {
+        // First 2 beats: full content from Claude
+        return {
+          ...generated,
+          id: generateBeatId(sessionId, index),
+          label: generated.label || beatDef.label,
+          scene_description: generated.scene_description || '',
+          duration_seconds: generated.duration_seconds || 6,
+          keyframe_prompts: generated.keyframe_prompts || [],
+          index,
+          status: 'pending',
+          gridImageUrl: null,
+          keyframeUrls: [],
+        }
+      } else {
+        // Remaining beats: skeleton (label only, no content)
+        return {
+          id: generateBeatId(sessionId, index),
+          label: beatDef.label,
+          scene_description: '',
+          duration_seconds: 6,
+          keyframe_prompts: [],
+          index,
+          status: 'skeleton',
+          gridImageUrl: null,
+          keyframeUrls: [],
+        }
+      }
+    })
 
     // === SAVE TO NOCODB ===
     try {
@@ -473,56 +510,61 @@ Generate a compelling ${outcomeName.toLowerCase()} story now.`
         archetype: archetypeName,
         outcome: outcomeName,
         referenceImageUrl: body.referenceImages?.[0] || undefined,
-        totalBeats: enrichedBeats.length,
+        totalBeats: allBeats.length,
       })
 
-      // Create beat records and keyframe records
-      for (const beat of enrichedBeats) {
-        const beatWeight = 1 / enrichedBeats.length // Simple equal distribution for now
+      // Store storySeed and outcomeName in session data for reload
+      await updateSession(sessionId, {
+        storyData: JSON.stringify({ storySeed, outcomeName }),
+      })
+
+      // Create beat records — full records for first 2, skeletons for rest
+      for (const beat of allBeats) {
+        const beatWeight = 1 / allBeats.length
         await createBeat({
           beatId: beat.id,
           sessionId,
           beatIndex: beat.index,
           beatLabel: beat.label,
-          description: beat.scene_description,
+          description: beat.scene_description || undefined,
           duration: `${beat.duration_seconds || 6}s`,
           percentOfTotal: Math.round(beatWeight * 100),
         })
 
-        // Create keyframe records with prompts (9 per beat in a 3x3 grid)
-        if (beat.keyframe_prompts && beat.keyframe_prompts.length > 0) {
+        // Only create keyframe records for generated beats (not skeletons)
+        if (beat.status !== 'skeleton' && beat.keyframe_prompts && beat.keyframe_prompts.length > 0) {
           const keyframes = beat.keyframe_prompts.slice(0, 9).map((prompt: string, idx: number) => ({
             keyframeId: generateKeyframeId(beat.id, null, idx + 1),
             sessionId,
             beatId: beat.id,
             frameIndex: idx + 1,
-            row: Math.floor(idx / 3) + 1,  // 1, 1, 1, 2, 2, 2, 3, 3, 3
-            col: (idx % 3) + 1,            // 1, 2, 3, 1, 2, 3, 1, 2, 3
+            row: Math.floor(idx / 3) + 1,
+            col: (idx % 3) + 1,
             prompt: prompt,
           }))
-          
+
           await bulkCreateKeyframes(keyframes)
         }
       }
 
-      console.log(`✅ Story saved to NocoDB: ${sessionId} with ${enrichedBeats.length} beats and keyframe prompts`)
+      console.log(`✅ Story saved: ${sessionId} — ${INITIAL_BEAT_COUNT} generated beats + ${allBeats.length - INITIAL_BEAT_COUNT} skeletons`)
     } catch (nocoError) {
-      // Log but don't fail - story still works without persistence
       console.error('⚠️ Failed to save to NocoDB (continuing anyway):', nocoError)
     }
 
-    // Image generation is now on-demand via /api/images/generate
-    // The frontend triggers it per-beat as the user progresses
+    // Image generation is on-demand via /api/images/generate
+    // Progressive beat content generated via /api/story/beat
 
     const response: StoryGenerationResponse = {
       success: true,
       storyId: sessionId,
       title: storyData.story_title || 'Untitled Story',
       logline: storyData.story_logline || '',
+      storySeed,
       archetype: archetypeName,
       outcome: outcomeName,
-      beatCount: enrichedBeats.length,
-      beats: enrichedBeats,
+      beatCount: allBeats.length,
+      beats: allBeats,
       generatedAt: new Date().toISOString(),
     }
 

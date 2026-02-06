@@ -18,7 +18,7 @@ export interface StoryBeat {
   visitedScenes?: string[]       // For loopable beats - track explored scenes
   isConvergence?: boolean        // Fixer point where branches converge
   branchDepth?: number           // 0-4, how deep in branching
-  status?: 'hidden' | 'current' | 'completed' | 'pending' | 'generating' | 'ready' | 'locked'
+  status?: 'hidden' | 'current' | 'completed' | 'pending' | 'generating' | 'ready' | 'locked' | 'skeleton'
   visualPrompt?: string          // Prompt used for Nano Banana generation
   scriptText?: string            // AI-generated narrative text
   

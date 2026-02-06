@@ -24,6 +24,8 @@ export default function StoryceptionPage() {
   const [archetypeIndex, setArchetypeIndex] = useState(0)
   const [storyTitle, setStoryTitle] = useState('')
   const [storyLogline, setStoryLogline] = useState('')
+  const [storySeed, setStorySeed] = useState('')
+  const [outcomeName, setOutcomeName] = useState('')
 
   // Load existing session on mount
   useEffect(() => {
@@ -89,6 +91,13 @@ export default function StoryceptionPage() {
           setStoryBeats(beats)
           setSessionId(savedSessionId)
           setHistory([{ beats, timestamp: Date.now(), action: "Loaded from session" }])
+
+          // Restore progressive generation state from session data
+          if (data.storyData?.storySeed) setStorySeed(data.storyData.storySeed)
+          if (data.storyData?.outcomeName) setOutcomeName(data.storyData.outcomeName)
+          else if (data.outcome) setOutcomeName(data.outcome)
+          if (data.referenceImageUrl) setReferenceImageUrl(data.referenceImageUrl)
+
           console.log(`✅ Loaded ${beats.length} beats from session`)
         } else {
           // Session not found or empty, clear and show modal
@@ -108,7 +117,7 @@ export default function StoryceptionPage() {
     loadExistingSession()
   }, [])
 
-  const handleGenerate = (beats: StoryBeat[], archIdx: number, refImageUrl?: string, storyId?: string, title?: string, logline?: string) => {
+  const handleGenerate = (beats: StoryBeat[], archIdx: number, refImageUrl?: string, storyId?: string, title?: string, logline?: string, seed?: string, outcome?: string) => {
     setStoryBeats(beats)
     setShowModal(false)
     setCurrentBeatIndex(0)
@@ -118,6 +127,8 @@ export default function StoryceptionPage() {
     if (storyId) setSessionId(storyId)
     if (title) setStoryTitle(title)
     if (logline) setStoryLogline(logline)
+    if (seed) setStorySeed(seed)
+    if (outcome) setOutcomeName(outcome)
   }
 
   const handleNewStory = () => {
@@ -222,6 +233,8 @@ export default function StoryceptionPage() {
           archetypeIndex={archetypeIndex}
           storyTitle={storyTitle}
           storyLogline={storyLogline}
+          storySeed={storySeed}
+          outcomeName={outcomeName}
         />
       ) : (
         <StoryCanvas

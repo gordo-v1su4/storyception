@@ -132,7 +132,7 @@ export interface StoryBeatRecord {
   'Percent of Total': number
   'Selected Branch ID'?: string
   'Keyframes (JSON)'?: string
-  'Status': 'pending' | 'generating' | 'ready' | 'locked'
+  'Status': 'pending' | 'generating' | 'ready' | 'locked' | 'skeleton'
   'Created At'?: string
 }
 
@@ -170,12 +170,14 @@ export async function getBeatsForSession(sessionId: string): Promise<StoryBeatRe
 }
 
 export async function updateBeat(beatId: string, updates: Partial<{
+  description: string
   generatedIdea: string
   selectedBranchId: string
   keyframesJson: string
-  status: 'pending' | 'generating' | 'ready' | 'locked'
+  status: 'pending' | 'generating' | 'ready' | 'locked' | 'skeleton'
 }>): Promise<StoryBeatRecord> {
   const payload: Record<string, unknown> = {}
+  if (updates.description) payload['Description'] = updates.description
   if (updates.generatedIdea) payload['Generated Idea'] = updates.generatedIdea
   if (updates.selectedBranchId) payload['Selected Branch ID'] = updates.selectedBranchId
   if (updates.keyframesJson) payload['Keyframes (JSON)'] = updates.keyframesJson

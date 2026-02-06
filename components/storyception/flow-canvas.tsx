@@ -28,6 +28,7 @@ import { motion } from "framer-motion"
 import { ArrowRight, ArrowDown, Move, RotateCcw, Lock, Unlock, Wand2, Eye, EyeOff } from "lucide-react"
 import { getBeatHexColor, BRANCH_COLORS } from "@/lib/colors"
 import { calculateHierarchyLayout } from "@/lib/use-hierarchy-layout"
+import { archetypes } from "@/lib/data"
 
 // Custom node types
 const nodeTypes = {
@@ -48,6 +49,8 @@ interface FlowCanvasProps {
   archetypeIndex?: number
   storyTitle?: string
   storyLogline?: string
+  storySeed?: string
+  outcomeName?: string
 }
 
 // Default edge options - bezier curves with cyan arrows
@@ -67,7 +70,7 @@ const defaultEdgeOptions = {
 }
 
 // Inner component that has access to useReactFlow
-function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, onAddBeat, referenceImageUrl, sessionId, archetypeIndex = 0, storyTitle = '', storyLogline = '' }: FlowCanvasProps) {
+function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, onAddBeat, referenceImageUrl, sessionId, archetypeIndex = 0, storyTitle = '', storyLogline = '', storySeed = '', outcomeName = '' }: FlowCanvasProps) {
   const [expandedBranches, setExpandedBranches] = useState<Set<number>>(new Set())
   const [layout, setLayout] = useState<LayoutDirection>("vertical") // Vertical = top-to-bottom flow
   const [locked, setLocked] = useState(false)
@@ -125,15 +128,16 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
   }, [])
 
   // Generate keyframes for a beat using the on-demand image generation API
-  const generateKeyframes = useCallback(async (beat: StoryBeat): Promise<string[] | null> => {
+  // branchContext: optional context from the selected branch that leads INTO this beat
+  const generateKeyframes = useCallback(async (beat: StoryBeat, branchContext?: { title: string; description: string }): Promise<string[] | null> => {
     if (!sessionId || !referenceImageUrl) {
       console.log('⚠️ No session ID or reference image, skipping keyframe generation')
       return null
     }
 
     try {
-      console.log(`🎬 Generating keyframes for beat: ${beat.label}`)
-      
+      console.log(`🎬 Generating keyframes for beat: ${beat.label}${branchContext ? ` (after branch: ${branchContext.title})` : ''}`)
+
       const response = await fetch('/api/images/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -145,22 +149,26 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
           beatDescription: beat.desc || beat.generatedIdea || '',
           beatDuration: beat.duration,
           beatPercent: beat.percentOfTotal,
+          branchContext: branchContext
+            ? `The player chose: "${branchContext.title}" — ${branchContext.description}`
+            : undefined,
         }),
       })
 
       if (!response.ok) {
-        console.error('Image generation failed:', response.status)
+        const errorText = await response.text()
+        console.error(`Image generation failed [${response.status}]:`, errorText)
         return null
       }
 
       const result = await response.json()
-      
+
       if (result.success && result.keyframeUrls?.length > 0) {
         console.log(`✅ Got ${result.keyframeUrls.length} keyframe URLs`)
         return result.keyframeUrls
       }
-      
-      console.log('⚠️ No keyframes in response')
+
+      console.log('⚠️ No keyframes in response:', JSON.stringify(result).substring(0, 200))
       return null
     } catch (error) {
       console.error('Keyframe generation error:', error)
@@ -168,10 +176,10 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
     }
   }, [sessionId, referenceImageUrl])
 
-  // Handle branch selection - generate images for next beat, then reveal
+  // Handle branch selection - progressively generate next beat content + images, then reveal
   const handleSelectBranch = useCallback(async (beatId: number, branch: BranchOption) => {
     const pathKey = `${beatId}-${branch.id}`
-    
+
     // 1. Update the current beat to show branch selection
     onUpdateBeat(beatId, {
       selectedBranchId: branch.id,
@@ -180,38 +188,116 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
         selected: b.id === branch.id
       }))
     })
-    
+
     setSelectedBranchPaths(prev => new Map(prev).set(pathKey, branch))
-    
+
     // 2. Find the next beat
     const beatIndex = beats.findIndex(b => b.id === beatId)
-    if (beatIndex >= 0 && beatIndex + 1 < beats.length) {
-      const nextBeat = beats[beatIndex + 1]
-      
-      // 3. Mark next beat as generating
-      setGeneratingBeatId(nextBeat.id)
-      onUpdateBeat(nextBeat.id, { status: 'generating' })
-      
-      // 4. Generate keyframes for the next beat
-      const keyframes = await generateKeyframes(nextBeat)
-      
-      // 5. Update the next beat with generated frames
-      if (keyframes && keyframes.length > 0) {
-        onUpdateBeat(nextBeat.id, { 
-          frames: keyframes,
-          status: 'ready'
+    if (beatIndex < 0 || beatIndex + 1 >= beats.length) return
+
+    const nextBeat = beats[beatIndex + 1]
+    const branchContext = { title: branch.title, description: branch.desc || '' }
+
+    // 3. Mark next beat as generating
+    setGeneratingBeatId(nextBeat.id)
+    onUpdateBeat(nextBeat.id, { status: 'generating' })
+
+    // 4. If next beat is a skeleton, generate its content first via progressive beat endpoint
+    let updatedNextBeat = nextBeat
+    const isSkeleton = nextBeat.status === 'skeleton' || (!nextBeat.desc && !nextBeat.generatedIdea)
+
+    if (isSkeleton && sessionId) {
+      try {
+        console.log(`🎭 Generating progressive content for beat: ${nextBeat.label}`)
+
+        // Build context from all previous beats
+        const prevBeats = beats.slice(0, beatIndex + 1).map(b => ({
+          label: b.label,
+          description: b.desc || b.generatedIdea || '',
+          selectedBranch: b.branches?.find(br => br.selected)?.title,
+        }))
+
+        const beatGenResponse = await fetch('/api/story/beat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId,
+            beatId: nextBeat.beatId || `beat-${nextBeat.id}`,
+            beatIndex: beatIndex + 1,
+            beatLabel: nextBeat.label,
+            beatStructureDesc: nextBeat.desc || '',
+            archetypeName: archetypes[archetypeIndex]?.title || 'Story Circle',
+            outcomeName,
+            storyTitle,
+            storyLogline,
+            storySeed,
+            selectedBranch: {
+              title: branch.title,
+              description: branch.desc || '',
+              type: branch.type || 'discovery',
+            },
+            previousBeats: prevBeats,
+          }),
         })
-      } else {
-        // Even if generation fails, mark as ready so user can proceed
-        onUpdateBeat(nextBeat.id, { status: 'ready' })
+
+        const beatGenData = await beatGenResponse.json()
+
+        if (beatGenData.success) {
+          console.log(`✅ Beat content generated: "${beatGenData.scene_description?.substring(0, 60)}..."`)
+
+          // Update state with generated content
+          onUpdateBeat(nextBeat.id, {
+            desc: beatGenData.scene_description,
+            generatedIdea: beatGenData.scene_description,
+            keyframePrompts: beatGenData.keyframe_prompts,
+            status: 'pending',
+          })
+
+          // Create local copy with updated fields for image generation
+          // (onUpdateBeat is async state, closure still has old values)
+          updatedNextBeat = {
+            ...nextBeat,
+            desc: beatGenData.scene_description,
+            generatedIdea: beatGenData.scene_description,
+            keyframePrompts: beatGenData.keyframe_prompts,
+            status: 'pending',
+          }
+        } else {
+          console.error('Progressive beat generation failed:', beatGenData.error)
+        }
+      } catch (err) {
+        console.error('Progressive beat generation error:', err)
       }
-      
-      setGeneratingBeatId(null)
-      
-      // 6. Reveal the next beat
-      setRevealedBeats(prev => Math.max(prev, beatIndex + 2))
     }
-  }, [beats, onUpdateBeat, generateKeyframes])
+
+    // 5. Generate keyframes (images) for the next beat with branch context
+    const keyframes = await generateKeyframes(updatedNextBeat, branchContext)
+
+    // 6. Update the next beat with generated frames
+    if (keyframes && keyframes.length > 0) {
+      onUpdateBeat(nextBeat.id, {
+        frames: keyframes,
+        status: 'ready'
+      })
+
+      // Also give the selected branch node the same images for visual feedback
+      const currentBeat = beats[beatIndex]
+      if (currentBeat.branches) {
+        const updatedBranches = currentBeat.branches.map(b =>
+          b.id === branch.id ? { ...b, selected: true, frames: keyframes } : { ...b, selected: false }
+        )
+        onUpdateBeat(beatId, { branches: updatedBranches })
+      }
+    } else {
+      console.warn(`⚠️ No keyframes generated for beat ${nextBeat.id} after branch selection`)
+      onUpdateBeat(nextBeat.id, { status: 'ready' })
+    }
+
+    setGeneratingBeatId(null)
+
+    // 7. Reveal the next beat
+    setRevealedBeats(prev => Math.max(prev, beatIndex + 2))
+  }, [beats, onUpdateBeat, generateKeyframes, sessionId, archetypeIndex, storyTitle, storyLogline, storySeed, outcomeName])
 
   // Convert beats to React Flow nodes and edges
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {

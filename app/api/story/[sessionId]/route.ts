@@ -71,10 +71,17 @@ export async function GET(
             prompt: kf['Prompt'],
             status: kf['Status'],
           })),
-          // Parse keyframes JSON if present
-          keyframeUrls: beat['Keyframes (JSON)'] 
-            ? JSON.parse(beat['Keyframes (JSON)']) 
-            : keyframes.map(kf => kf['Image URL']).filter(Boolean),
+          // Parse keyframes JSON — may be { gridUrl, keyframes: [...] } or raw array
+          keyframeUrls: (() => {
+            if (beat['Keyframes (JSON)']) {
+              try {
+                const parsed = JSON.parse(beat['Keyframes (JSON)'])
+                if (parsed.keyframes && Array.isArray(parsed.keyframes)) return parsed.keyframes
+                if (Array.isArray(parsed)) return parsed
+              } catch { /* fall through */ }
+            }
+            return keyframes.map(kf => kf['Image URL']).filter(Boolean)
+          })(),
         }
       })
     )
