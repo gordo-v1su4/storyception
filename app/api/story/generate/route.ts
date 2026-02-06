@@ -1,20 +1,258 @@
 /**
  * Story Generation API Route
  * 
- * Calls Gemini directly to generate story beats and keyframe prompts
+ * Calls Anthropic Claude Sonnet 4.6 to generate story beats and keyframe prompts
  * Saves generated story to NocoDB for persistence
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import sharp from 'sharp'
 import { 
   createSession, 
   createBeat, 
+  bulkCreateKeyframes,
   generateSessionId, 
-  generateBeatId 
+  generateBeatId,
+  generateKeyframeId
 } from '@/lib/nocodb'
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent'
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
+const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
+const FAL_KEY = process.env.FAL_KEY
+const FAL_API_URL = 'https://fal.run/fal-ai/nano-banana-pro/edit'
+const NOCODB_BASE_URL = process.env.NOCODB_BASE_URL || 'https://nocodb.v1su4.com'
+const NOCODB_API_TOKEN = process.env.NOCODB_API_TOKEN || ''
+const NEXTCLOUD_BASE_URL = process.env.NEXTCLOUD_BASE_URL || 'https://nextcloud.v1su4.com'
+const NEXTCLOUD_USERNAME = process.env.NEXTCLOUD_USERNAME || 'admin'
+const NEXTCLOUD_APP_PASSWORD = process.env.NEXTCLOUD_APP_PASSWORD || ''
+const NEXTCLOUD_UPLOAD_PATH = process.env.NEXTCLOUD_UPLOAD_PATH || '/Storyception'
+const NOCODB_TABLE_BEATS = process.env.NOCODB_TABLE_BEATS || 'may145m0gc24nmu'
+const NOCODB_TABLE_KEYFRAMES = process.env.NOCODB_TABLE_KEYFRAMES || 'mc5xw2syf1fxek8'
+
+const NEXTCLOUD_WEBDAV_URL = `${NEXTCLOUD_BASE_URL}/remote.php/dav/files/${NEXTCLOUD_USERNAME}`
+const NEXTCLOUD_SHARE_API_URL = `${NEXTCLOUD_BASE_URL}/ocs/v2.php/apps/files_sharing/api/v1/shares`
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+function buildGridPrompt(beatLabel: string, beatDescription: string): string {
+  return `You are an award-winning trailer director and storyboard artist.
+
+TASK: Transform the reference image into a cinematic 3x3 grid storyboard.
+
+SCENE: ${beatLabel}
+DESCRIPTION: ${beatDescription}
+STYLE: cinematic, photoreal, film quality, dramatic lighting
+
+OUTPUT: Generate ONE single image containing a 3×3 grid (9 panels total).
+
+CRITICAL RULES:
+- The SAME character from the reference must appear in all 9 panels
+- Maintain strict continuity: same person, same wardrobe, same environment, same lighting
+- Only change: camera angle, framing, action, expression between panels
+- Do NOT add text, labels, or watermarks on the image
+- Photoreal quality, cinematic color grade consistent across all panels
+
+SHOT PROGRESSION (reading left-to-right, top-to-bottom):
+Panel 1: Extreme wide establishing shot - full environment visible
+Panel 2: Wide shot - character in environment context
+Panel 3: Medium-long shot - character approaching or moving
+Panel 4: Medium shot - character interaction or key action
+Panel 5: Medium close-up - emotional peak moment (center of grid)
+Panel 6: Close-up - intense facial expression or reaction
+Panel 7: Extreme close-up - detail shot (eyes, hands, object)
+Panel 8: Low angle power shot - dramatic perspective
+Panel 9: Wide closing shot - resolution or transition moment
+
+REQUIREMENTS:
+- One cohesive image with all 9 shots in a 3x3 grid layout
+- Thin black borders between panels
+- 16:9 aspect ratio for the full grid
+- NO TEXT OR LABELS - pure visual storytelling
+- Cinematic lighting and color grading throughout`
+}
+
+async function nextcloudCreateFolder(path: string) {
+  const auth = Buffer.from(`${NEXTCLOUD_USERNAME}:${NEXTCLOUD_APP_PASSWORD}`).toString('base64')
+  const parts = path.split('/').filter(Boolean)
+  let currentPath = ''
+  for (const part of parts) {
+    currentPath += `/${part}`
+    try {
+      await fetch(`${NEXTCLOUD_WEBDAV_URL}${currentPath}/`, {
+        method: 'MKCOL',
+        headers: { 'Authorization': `Basic ${auth}` },
+      })
+    } catch {
+      // Folder may already exist
+    }
+  }
+}
+
+async function nextcloudUpload(imageBuffer: Buffer, remotePath: string): Promise<boolean> {
+  const auth = Buffer.from(`${NEXTCLOUD_USERNAME}:${NEXTCLOUD_APP_PASSWORD}`).toString('base64')
+  const folderPath = remotePath.substring(0, remotePath.lastIndexOf('/'))
+  await nextcloudCreateFolder(folderPath)
+  const response = await fetch(`${NEXTCLOUD_WEBDAV_URL}/${remotePath}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Basic ${auth}`,
+      'Content-Type': 'image/png',
+    },
+    body: imageBuffer as unknown as BodyInit,
+  })
+  return response.ok || response.status === 201 || response.status === 204
+}
+
+async function nextcloudCreateShare(path: string): Promise<string | null> {
+  const auth = Buffer.from(`${NEXTCLOUD_USERNAME}:${NEXTCLOUD_APP_PASSWORD}`).toString('base64')
+  const response = await fetch(NEXTCLOUD_SHARE_API_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${auth}`,
+      'OCS-APIRequest': 'true',
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      path: `/${path}`,
+      shareType: '3',
+      permissions: '1',
+    }),
+  })
+  if (response.ok) {
+    const text = await response.text()
+    const urlMatch = text.match(/<url>([^<]+)<\/url>/)
+    if (urlMatch) {
+      return urlMatch[1].replace('http://', 'https://') + '/download'
+    }
+  }
+  return null
+}
+
+async function generateGridWithFal(referenceImageUrl: string, prompt: string): Promise<Buffer | null> {
+  const response = await fetch(FAL_API_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Key ${FAL_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      prompt,
+      image_urls: [referenceImageUrl],
+      aspect_ratio: '16:9',
+      resolution: '4K',
+      num_images: 1,
+      output_format: 'png',
+      sync_mode: true,
+    }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    console.error(`fal.ai error: ${response.status} - ${errorText}`)
+    return null
+  }
+
+  const data = await response.json()
+  if (data.images && data.images.length > 0) {
+    const imageUrl = data.images[0].url
+    const imgResponse = await fetch(imageUrl)
+    const arrayBuffer = await imgResponse.arrayBuffer()
+    return Buffer.from(arrayBuffer)
+  }
+
+  return null
+}
+
+async function generateThumbnail(imageBuffer: Buffer, maxWidth: number = 200): Promise<Buffer> {
+  return await sharp(imageBuffer)
+    .resize(maxWidth, null, { fit: 'inside' })
+    .png({ quality: 80 })
+    .toBuffer()
+}
+
+async function sliceGridIntoKeyframes(gridBuffer: Buffer): Promise<Buffer[]> {
+  const keyframes: Buffer[] = []
+  const metadata = await sharp(gridBuffer).metadata()
+  const width = metadata.width || 3840
+  const height = metadata.height || 2160
+  const cellWidth = Math.floor(width / 3)
+  const cellHeight = Math.floor(height / 3)
+
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 3; col++) {
+      const left = col * cellWidth
+      const top = row * cellHeight
+      const cellBuffer = await sharp(gridBuffer)
+        .extract({ left, top, width: cellWidth, height: cellHeight })
+        .png()
+        .toBuffer()
+      keyframes.push(cellBuffer)
+    }
+  }
+
+  return keyframes
+}
+
+async function updateKeyframeImageRecord(
+  keyframeId: string,
+  imageUrl: string | null,
+  thumbnailUrl: string | null
+): Promise<void> {
+  if (!NOCODB_API_TOKEN) return
+  const findResponse = await fetch(
+    `${NOCODB_BASE_URL}/api/v2/tables/${NOCODB_TABLE_KEYFRAMES}/records?where=(Keyframe ID,eq,${encodeURIComponent(keyframeId)})`,
+    { headers: { 'xc-token': NOCODB_API_TOKEN } }
+  )
+  if (!findResponse.ok) return
+  const findData = await findResponse.json()
+  const record = findData.list?.[0]
+  if (!record?.Id) return
+
+  const thumbnailAttachment = thumbnailUrl ? [{
+    url: thumbnailUrl,
+    title: `thumb-${keyframeId}.png`,
+    mimetype: 'image/png',
+  }] : null
+
+  await fetch(`${NOCODB_BASE_URL}/api/v2/tables/${NOCODB_TABLE_KEYFRAMES}/records`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'xc-token': NOCODB_API_TOKEN,
+    },
+    body: JSON.stringify([{
+      Id: record.Id,
+      'Image URL': imageUrl,
+      'Thumbnail': thumbnailAttachment,
+      'Status': imageUrl ? 'ready' : 'pending',
+    }]),
+  })
+}
+
+async function updateBeatKeyframesJson(beatId: string, gridUrl: string | null, keyframes: string[]) {
+  if (!NOCODB_API_TOKEN) return
+  const findResponse = await fetch(
+    `${NOCODB_BASE_URL}/api/v2/tables/${NOCODB_TABLE_BEATS}/records?where=(Beat ID,eq,${encodeURIComponent(beatId)})`,
+    { headers: { 'xc-token': NOCODB_API_TOKEN } }
+  )
+  if (!findResponse.ok) return
+  const findData = await findResponse.json()
+  const record = findData.list?.[0]
+  if (!record?.Id) return
+
+  await fetch(`${NOCODB_BASE_URL}/api/v2/tables/${NOCODB_TABLE_BEATS}/records`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'xc-token': NOCODB_API_TOKEN,
+    },
+    body: JSON.stringify([{
+      Id: record.Id,
+      'Keyframes (JSON)': JSON.stringify({ gridUrl, keyframes }),
+      'Status': keyframes.length > 0 ? 'ready' : 'pending',
+    }]),
+  })
+}
 
 // Beat structures by archetype
 const BEAT_STRUCTURES: Record<number, { id: string; label: string; desc: string }[]> = {
@@ -110,9 +348,9 @@ export async function POST(request: NextRequest) {
     const body: StoryGenerationRequest = await request.json()
 
     // Validate
-    if (!GEMINI_API_KEY) {
+    if (!ANTHROPIC_API_KEY) {
       return NextResponse.json(
-        { success: false, error: 'GEMINI_API_KEY not configured' },
+        { success: false, error: 'ANTHROPIC_API_KEY not configured' },
         { status: 500 }
       )
     }
@@ -170,32 +408,62 @@ RESPOND IN THIS EXACT JSON FORMAT:
 
 Generate a compelling ${outcomeName.toLowerCase()} story now.`
 
-    // Call Gemini API directly
-    const geminiResponse = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.8,
-          responseMimeType: 'application/json',
-        },
-      }),
-    })
+    // Call Anthropic Claude API with retry on rate limit
+    const maxAttempts = 3
+    let anthropicResponse: Response | null = null
 
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text()
-      console.error('Gemini API Error:', errorText)
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      anthropicResponse = await fetch(ANTHROPIC_API_URL, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY!,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 8192,
+          system: 'You are an expert screenwriter and storyboard artist. Always respond with valid JSON only, no markdown code blocks or extra text. Output raw JSON.',
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.8,
+        }),
+      })
+
+      if (anthropicResponse.ok) break
+
+      const errorText = await anthropicResponse.text()
+      console.error(`Anthropic API Error (attempt ${attempt}):`, errorText)
+
+      if (anthropicResponse.status === 429 && attempt < maxAttempts) {
+        await sleep(1000 * attempt)
+        continue
+      }
+
       return NextResponse.json(
-        { success: false, error: `Gemini API error: ${geminiResponse.status}` },
+        { success: false, error: `Anthropic API error: ${anthropicResponse.status}` },
         { status: 500 }
       )
     }
 
-    const geminiData = await geminiResponse.json()
+    if (!anthropicResponse) {
+      return NextResponse.json(
+        { success: false, error: 'Anthropic API error: no response' },
+        { status: 500 }
+      )
+    }
 
-    // Parse response
-    const textContent = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
+    const anthropicData = await anthropicResponse.json()
+
+    // Extract text from Anthropic response (content is an array of blocks)
+    const textContent = anthropicData.content
+      ?.filter((block: { type: string }) => block.type === 'text')
+      .map((block: { text: string }) => block.text)
+      .join('') || '{}'
 
     let storyData
     try {
@@ -206,7 +474,7 @@ Generate a compelling ${outcomeName.toLowerCase()} story now.`
       if (jsonMatch) {
         storyData = JSON.parse(jsonMatch[1])
       } else {
-        console.error('Failed to parse Gemini response:', textContent.substring(0, 500))
+        console.error('Failed to parse Anthropic response:', textContent.substring(0, 500))
         return NextResponse.json(
           { success: false, error: 'Failed to parse story response' },
           { status: 500 }
@@ -240,7 +508,7 @@ Generate a compelling ${outcomeName.toLowerCase()} story now.`
         totalBeats: enrichedBeats.length,
       })
 
-      // Create beat records
+      // Create beat records and keyframe records
       for (const beat of enrichedBeats) {
         const beatWeight = 1 / enrichedBeats.length // Simple equal distribution for now
         await createBeat({
@@ -252,12 +520,88 @@ Generate a compelling ${outcomeName.toLowerCase()} story now.`
           duration: `${beat.duration_seconds || 6}s`,
           percentOfTotal: Math.round(beatWeight * 100),
         })
+
+        // Create keyframe records with prompts (9 per beat in a 3x3 grid)
+        if (beat.keyframe_prompts && beat.keyframe_prompts.length > 0) {
+          const keyframes = beat.keyframe_prompts.slice(0, 9).map((prompt: string, idx: number) => ({
+            keyframeId: generateKeyframeId(beat.id, null, idx + 1),
+            sessionId,
+            beatId: beat.id,
+            frameIndex: idx + 1,
+            row: Math.floor(idx / 3) + 1,  // 1, 1, 1, 2, 2, 2, 3, 3, 3
+            col: (idx % 3) + 1,            // 1, 2, 3, 1, 2, 3, 1, 2, 3
+            prompt: prompt,
+          }))
+          
+          await bulkCreateKeyframes(keyframes)
+        }
       }
 
-      console.log(`✅ Story saved to NocoDB: ${sessionId} with ${enrichedBeats.length} beats`)
+      console.log(`✅ Story saved to NocoDB: ${sessionId} with ${enrichedBeats.length} beats and keyframe prompts`)
     } catch (nocoError) {
       // Log but don't fail - story still works without persistence
       console.error('⚠️ Failed to save to NocoDB (continuing anyway):', nocoError)
+    }
+
+    // === OPTIONAL: GENERATE IMAGES FOR FIRST BEAT ===
+    const referenceImageUrl = body.referenceImages?.[0]
+    const canGenerateImages = Boolean(
+      referenceImageUrl && FAL_KEY && NEXTCLOUD_APP_PASSWORD && NEXTCLOUD_USERNAME && NEXTCLOUD_BASE_URL
+    )
+
+    if (canGenerateImages && enrichedBeats.length > 0) {
+      const firstBeat = enrichedBeats[0]
+      try {
+        const uploadRoot = (NEXTCLOUD_UPLOAD_PATH || '/Storyception')
+          .replace(/^\/+/, '')
+          .replace(/\/+$/, '') || 'Storyception'
+
+        const gridPrompt = buildGridPrompt(firstBeat.label, firstBeat.scene_description)
+        const gridBuffer = await generateGridWithFal(referenceImageUrl as string, gridPrompt)
+
+        if (gridBuffer) {
+          const gridPath = `${uploadRoot}/${sessionId}/${firstBeat.id}/grid-4k.png`
+          const gridUploaded = await nextcloudUpload(gridBuffer, gridPath)
+          const gridShareUrl = gridUploaded ? await nextcloudCreateShare(gridPath) : null
+
+          const keyframeBuffers = await sliceGridIntoKeyframes(gridBuffer)
+          const keyframeUrls: string[] = []
+          const thumbnailUrls: string[] = []
+
+          for (let i = 0; i < keyframeBuffers.length; i++) {
+            const keyframePath = `${uploadRoot}/${sessionId}/${firstBeat.id}/keyframe-${i + 1}.png`
+            const uploaded = await nextcloudUpload(keyframeBuffers[i], keyframePath)
+            if (uploaded) {
+              const shareUrl = await nextcloudCreateShare(keyframePath)
+              if (shareUrl) keyframeUrls.push(shareUrl)
+            }
+
+            const thumbnailBuffer = await generateThumbnail(keyframeBuffers[i], 200)
+            const thumbnailPath = `${uploadRoot}/${sessionId}/${firstBeat.id}/thumb-${i + 1}.png`
+            const thumbUploaded = await nextcloudUpload(thumbnailBuffer, thumbnailPath)
+            if (thumbUploaded) {
+              const thumbShareUrl = await nextcloudCreateShare(thumbnailPath)
+              if (thumbShareUrl) thumbnailUrls.push(thumbShareUrl)
+            }
+          }
+
+          for (let i = 0; i < keyframeBuffers.length; i++) {
+            const keyframeId = generateKeyframeId(firstBeat.id, null, i + 1)
+            await updateKeyframeImageRecord(
+              keyframeId,
+              keyframeUrls[i] || null,
+              thumbnailUrls[i] || null
+            )
+          }
+
+          await updateBeatKeyframesJson(firstBeat.id, gridShareUrl, keyframeUrls)
+
+          firstBeat.gridImageUrl = gridShareUrl
+          firstBeat.keyframeUrls = keyframeUrls
+        }
+      } catch (imageError) {
+        console.error('⚠️ Image generation failed (continuing anyway):', imageError)
+      }
     }
 
     const response: StoryGenerationResponse = {
@@ -288,7 +632,7 @@ Generate a compelling ${outcomeName.toLowerCase()} story now.`
 // GET - API info
 export async function GET() {
   return NextResponse.json({
-    message: 'Story Generation API (Direct Gemini)',
+    message: 'Story Generation API (Anthropic Claude Sonnet 4.6)',
     usage: 'POST with archetypeIndex, archetypeName, outcomeName',
     archetypes: [
       { index: 0, name: "Hero's Journey", beats: 12 },

@@ -10,27 +10,31 @@ import { getBeatPercentage, autoGenerateBeatIdea } from "@/lib/story-generator"
 
 interface SetupPanelProps {
   onClose: () => void
-  onGenerate: (beats: StoryBeat[], archIdx: number) => void
+  onGenerate: (beats: StoryBeat[], archIdx: number, referenceImageUrl?: string, storyId?: string) => void
 }
 
 export function SetupPanel({ onClose, onGenerate }: SetupPanelProps) {
   const [selectedArch, setSelectedArch] = useState<number | null>(null)
-  const [uploadedImages, setUploadedImages] = useState<string[]>([])
+  const [uploadedImages, setUploadedImages] = useState<Array<{ file: File; previewUrl: string }>>([])
   const [selectedOutcome, setSelectedOutcome] = useState<number | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
 
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []).slice(0, 3 - uploadedImages.length)
-    const imageUrls = files.map((file) => URL.createObjectURL(file))
-    setUploadedImages(prev => [...prev, ...imageUrls].slice(0, 3))
+    const newEntries = files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))
+    setUploadedImages(prev => [...prev, ...newEntries].slice(0, 3))
   }, [uploadedImages.length])
 
   const removeImage = useCallback((index: number) => {
-    setUploadedImages(prev => prev.filter((_, i) => i !== index))
+    setUploadedImages(prev => {
+      const item = prev[index]
+      if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl)
+      return prev.filter((_, i) => i !== index)
+    })
   }, [])
 
-  // Images optional for demo/testing - will be required when N8N integration is complete
-  const canGenerate = selectedArch !== null && selectedOutcome !== null
+  // Images required for full pipeline
+  const canGenerate = selectedArch !== null && selectedOutcome !== null && uploadedImages.length > 0
 
   const [error, setError] = useState<string | null>(null)
 
@@ -41,7 +45,24 @@ export function SetupPanel({ onClose, onGenerate }: SetupPanelProps) {
     setError(null)
 
     try {
-      // Call the real story generation API
+      // Upload reference images to Nextcloud first
+      const formData = new FormData()
+      uploadedImages.forEach((img) => formData.append("images", img.file))
+
+      const uploadResponse = await fetch("/api/images/upload", {
+        method: "POST",
+        body: formData,
+      })
+
+      const uploadData = await uploadResponse.json()
+
+      if (!uploadResponse.ok || !uploadData.success) {
+        throw new Error(uploadData.error || "Image upload failed")
+      }
+
+      const uploadedUrls: string[] = uploadData.urls || []
+
+      // Call the story generation API with uploaded URLs
       const response = await fetch('/api/story/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -49,7 +70,7 @@ export function SetupPanel({ onClose, onGenerate }: SetupPanelProps) {
           archetypeIndex: selectedArch,
           archetypeName: archetypes[selectedArch!].title,
           outcomeName: outcomes[selectedOutcome!].title,
-          referenceImages: uploadedImages,
+          referenceImages: uploadedUrls,
           totalDuration: 90,
         }),
       })
@@ -75,6 +96,7 @@ export function SetupPanel({ onClose, onGenerate }: SetupPanelProps) {
         index: number
         status: string
         gridImageUrl: string | null
+        keyframeUrls?: string[]
       }, idx: number) => {
         const percentage = getBeatPercentage(beat.id) || (100 / data.beats.length)
         
@@ -90,11 +112,12 @@ export function SetupPanel({ onClose, onGenerate }: SetupPanelProps) {
           keyframePrompts: beat.keyframe_prompts,
           status: beat.status,
           gridImageUrl: beat.gridImageUrl,
+          frames: beat.keyframeUrls,
         }
       })
 
       console.log(`✅ Story generated: ${data.storyId} with ${beats.length} beats`)
-      onGenerate(beats, selectedArch ?? 0)
+      onGenerate(beats, selectedArch ?? 0, uploadedUrls[0], data.storyId)
       setIsGenerating(false)
       onClose()
     } catch (err) {
@@ -277,14 +300,14 @@ export function SetupPanel({ onClose, onGenerate }: SetupPanelProps) {
                 </div>
 
                 <div className="grid grid-cols-3 gap-2">
-                  {uploadedImages.map((url, idx) => (
+                  {uploadedImages.map((img, idx) => (
                     <motion.div
                       key={idx}
                       initial={{ opacity: 0, scale: 0.8 }}
                       animate={{ opacity: 1, scale: 1 }}
                       className="relative aspect-square rounded-lg overflow-hidden border border-zinc-800 group"
                     >
-                      <img src={url} alt={`Ref ${idx + 1}`} className="w-full h-full object-cover" />
+                      <img src={img.previewUrl} alt={`Ref ${idx + 1}`} className="w-full h-full object-cover" />
                       <motion.button
                         whileHover={{ scale: 1.1 }}
                         whileTap={{ scale: 0.9 }}
@@ -394,7 +417,7 @@ export function SetupPanel({ onClose, onGenerate }: SetupPanelProps) {
             </span>
             <span className="text-zinc-700">•</span>
             <span className={uploadedImages.length > 0 ? "text-cyan-400" : "text-zinc-600"}>
-              {uploadedImages.length > 0 ? `✓ ${uploadedImages.length} image${uploadedImages.length > 1 ? 's' : ''}` : "(optional) images"}
+              {uploadedImages.length > 0 ? `✓ ${uploadedImages.length} image${uploadedImages.length > 1 ? 's' : ''}` : "Add image"}
             </span>
             <span className="text-zinc-700">•</span>
             <span className={selectedOutcome !== null ? "text-cyan-400" : ""}>

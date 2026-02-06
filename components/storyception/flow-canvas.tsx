@@ -610,7 +610,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
         fitView
         fitViewOptions={{ padding: 0.3, maxZoom: 1 }}
         minZoom={0.1}
-        maxZoom={2}
+        maxZoom={4}
         nodesDraggable={!locked}
         nodesConnectable={true}
         elementsSelectable={true}

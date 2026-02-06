@@ -1,9 +1,9 @@
 "use client"
 
-import { memo } from "react"
+import { memo, useState } from "react"
 import { Handle, Position, type NodeProps } from "@xyflow/react"
-import { motion } from "framer-motion"
-import { GitBranch, ChevronDown, ImageIcon, Loader2 } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
+import { GitBranch, ChevronDown, ImageIcon, Loader2, X, ChevronLeft, ChevronRight } from "lucide-react"
 import type { StoryBeat } from "@/lib/types"
 import { getBeatColorSet } from "@/lib/colors"
 
@@ -24,6 +24,7 @@ export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
   const { beat, isSelected, isExpanded, isRevealing = false, layout = "horizontal", onSelect, onToggleBranch } = data
   const beatIndex = beat.id - 1
   const totalBeats = 15
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   
   // Get frames from beat or use placeholders
   const frames = beat.frames || []
@@ -102,7 +103,14 @@ export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
           <div className={`grid grid-cols-3 gap-[1px] bg-zinc-800 ${isGenerating ? 'opacity-30' : ''}`}>
             {hasFrames ? (
               frames.slice(0, 9).map((frame: string, idx: number) => (
-                <div key={idx} className="aspect-video bg-zinc-900 relative">
+                <div
+                  key={idx}
+                  className="aspect-video bg-zinc-900 relative cursor-pointer hover:brightness-125 transition-all"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setLightboxIndex(idx)
+                  }}
+                >
                   <img src={frame} alt={`KF${idx + 1}`} className="w-full h-full object-cover" />
                   <span className="absolute bottom-0 left-0 text-[7px] font-mono text-white/60 bg-black/70 px-1">
                     {idx + 1}
@@ -162,6 +170,72 @@ export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
           </div>
         </div>
       </motion.div>
+
+      {/* Image Lightbox */}
+      <AnimatePresence>
+        {lightboxIndex !== null && hasFrames && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] bg-black/95 flex items-center justify-center"
+            onClick={(e) => {
+              e.stopPropagation()
+              setLightboxIndex(null)
+            }}
+          >
+            {/* Close button */}
+            <button
+              onClick={(e) => { e.stopPropagation(); setLightboxIndex(null) }}
+              className="absolute top-6 right-6 w-10 h-10 bg-zinc-800 hover:bg-zinc-700 rounded-full flex items-center justify-center text-zinc-300 hover:text-white transition-colors z-10"
+            >
+              <X size={20} />
+            </button>
+
+            {/* Prev button */}
+            {lightboxIndex > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex - 1) }}
+                className="absolute left-6 top-1/2 -translate-y-1/2 w-12 h-12 bg-zinc-800/80 hover:bg-zinc-700 rounded-full flex items-center justify-center text-zinc-300 hover:text-white transition-colors z-10"
+              >
+                <ChevronLeft size={24} />
+              </button>
+            )}
+
+            {/* Next button */}
+            {lightboxIndex < frames.length - 1 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex + 1) }}
+                className="absolute right-6 top-1/2 -translate-y-1/2 w-12 h-12 bg-zinc-800/80 hover:bg-zinc-700 rounded-full flex items-center justify-center text-zinc-300 hover:text-white transition-colors z-10"
+              >
+                <ChevronRight size={24} />
+              </button>
+            )}
+
+            {/* Image */}
+            <motion.img
+              key={lightboxIndex}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              src={frames[lightboxIndex]}
+              alt={`Keyframe ${lightboxIndex + 1}`}
+              className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+
+            {/* Frame indicator */}
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3">
+              <span className="text-zinc-400 text-sm font-mono">
+                KF {lightboxIndex + 1} / {frames.length}
+              </span>
+              <span className="text-zinc-600 text-xs">
+                {beat.label}
+              </span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Output handle */}
       <Handle

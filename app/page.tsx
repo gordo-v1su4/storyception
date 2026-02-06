@@ -105,13 +105,16 @@ export default function StoryceptionPage() {
     loadExistingSession()
   }, [])
 
-  const handleGenerate = (beats: StoryBeat[], archIdx: number, refImageUrl?: string) => {
+  const handleGenerate = (beats: StoryBeat[], archIdx: number, refImageUrl?: string, storyId?: string) => {
     setStoryBeats(beats)
     setShowModal(false)
     setCurrentBeatIndex(0)
     setHistory([{ beats, timestamp: Date.now(), action: "Initial generation" }])
     if (refImageUrl) {
       setReferenceImageUrl(refImageUrl)
+    }
+    if (storyId) {
+      setSessionId(storyId)
     }
   }
 

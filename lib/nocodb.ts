@@ -17,10 +17,10 @@ const NOCODB_BASE_ID = process.env.NOCODB_BASE_ID || 'pce7ccvwdlz09bx'
 
 // Table IDs (from NocoDB setup)
 const TABLES = {
-  sessions: process.env.NOCODB_TABLE_SESSIONS || 'm1icipflxgrce6y',
-  beats: process.env.NOCODB_TABLE_BEATS || 'ms4mo8ekjtrqz48',
-  branches: process.env.NOCODB_TABLE_BRANCHES || 'mypczrrly1k8gsi',
-  keyframes: process.env.NOCODB_TABLE_KEYFRAMES || 'm301ac822mwqpy0',
+  sessions: process.env.NOCODB_TABLE_SESSIONS || 'mr4ilxbt1jsqf2l',
+  beats: process.env.NOCODB_TABLE_BEATS || 'may145m0gc24nmu',
+  branches: process.env.NOCODB_TABLE_BRANCHES || 'mt91qfqomry3bal',
+  keyframes: process.env.NOCODB_TABLE_KEYFRAMES || 'mc5xw2syf1fxek8',
 }
 
 // Helper for NocoDB API calls (uses xc-token header per user preference)

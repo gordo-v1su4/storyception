@@ -65,6 +65,7 @@ bmad/
 .claude/
 .agent/
 .cursor/
+.bmad/*
 
 # Misc
 *.local
