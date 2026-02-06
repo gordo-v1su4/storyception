@@ -31,7 +31,8 @@ import { calculateHierarchyLayout } from "@/lib/use-hierarchy-layout"
 import { archetypes } from "@/lib/data"
 
 // Custom node types
-const nodeTypes = {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const nodeTypes: Record<string, any> = {
   storyBeat: StoryBeatNode,
   branch: BranchNode,
 }
@@ -80,7 +81,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
   
   const [selectedBranchPaths, setSelectedBranchPaths] = useState<Map<string, BranchOption>>(new Map())
   const { fitView, setCenter, getZoom } = useReactFlow()
-  const layoutTimeoutRef = useRef<NodeJS.Timeout>()
+  const layoutTimeoutRef = useRef<NodeJS.Timeout>(undefined)
   const isInitialMount = useRef(true) // Track first render to only fitView once
   const prevRevealedBeats = useRef(revealedBeats) // Track previous to detect reveals
 
@@ -239,10 +240,14 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
             previousBeats: prevBeats,
           }),
         })
-
         const beatGenData = await beatGenResponse.json()
 
-        if (beatGenData.success) {
+        if (!beatGenResponse.ok) {
+          console.error(
+            `Beat generation failed [${beatGenResponse.status}]:`,
+            JSON.stringify(beatGenData).substring(0, 200)
+          )
+        } else if (beatGenData.success) {
           console.log(`✅ Beat content generated: "${beatGenData.scene_description?.substring(0, 60)}..."`)
 
           // Update state with generated content

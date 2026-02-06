@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { 
+import {
   getSession, 
   getBeatsForSession, 
   updateSession,
@@ -16,6 +16,31 @@ import {
 
 interface RouteParams {
   params: Promise<{ sessionId: string }>
+}
+
+const normalizeKeyframeUrls = (parsed: unknown): string[] => {
+  const values = Array.isArray(parsed)
+    ? parsed
+    : (
+        parsed &&
+        typeof parsed === 'object' &&
+        'keyframes' in parsed &&
+        Array.isArray((parsed as { keyframes?: unknown[] }).keyframes)
+      )
+      ? (parsed as { keyframes: unknown[] }).keyframes
+      : []
+
+  return values
+    .map((item) => {
+      if (typeof item === 'string') return item
+      if (!item || typeof item !== 'object') return null
+      const record = item as Record<string, unknown>
+      if (typeof record.url === 'string') return record.url
+      if (typeof record.image === 'string') return record.image
+      if (typeof record['Image URL'] === 'string') return record['Image URL']
+      return null
+    })
+    .filter((url): url is string => Boolean(url))
 }
 
 // GET - Load existing story session
@@ -76,8 +101,8 @@ export async function GET(
             if (beat['Keyframes (JSON)']) {
               try {
                 const parsed = JSON.parse(beat['Keyframes (JSON)'])
-                if (parsed.keyframes && Array.isArray(parsed.keyframes)) return parsed.keyframes
-                if (Array.isArray(parsed)) return parsed
+                const normalized = normalizeKeyframeUrls(parsed)
+                if (normalized.length > 0) return normalized
               } catch { /* fall through */ }
             }
             return keyframes.map(kf => kf['Image URL']).filter(Boolean)

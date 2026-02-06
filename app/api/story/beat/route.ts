@@ -50,6 +50,7 @@ export interface ProgressiveBeatResponse {
 
 export async function POST(request: NextRequest) {
   try {
+    const timeoutMs = Number.parseInt(process.env.ANTHROPIC_TIMEOUT_MS ?? '', 10) || 45000
     const body: ProgressiveBeatRequest = await request.json()
 
     if (!ANTHROPIC_API_KEY) {
@@ -112,36 +113,48 @@ RESPOND IN THIS EXACT JSON FORMAT:
 
 Generate the beat now.`
 
-    const anthropicResp = await fetch(ANTHROPIC_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2048,
-        system: 'You are an expert screenwriter. Always respond with valid JSON only, no markdown or extra text.',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.85,
-      }),
-    })
+    const signal = AbortSignal.timeout(timeoutMs)
+    let anthropicResp: Response
+    try {
+      anthropicResp = await fetch(ANTHROPIC_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 2048,
+          system: 'You are an expert screenwriter. Always respond with valid JSON only, no markdown or extra text.',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.85,
+        }),
+        signal,
+      })
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return NextResponse.json(
+          { success: false, error: `Anthropic API timed out after ${timeoutMs / 1000}s` },
+          { status: 504 }
+        )
+      }
+      throw err
+    }
 
     if (!anthropicResp.ok) {
-      const errText = await anthropicResp.text()
-      console.error('Anthropic progressive beat error:', errText)
-      return NextResponse.json(
-        { success: false, error: `Anthropic API error: ${anthropicResp.status}` },
-        { status: 500 }
-      )
+      const errorText = await anthropicResp.text()
+      console.error('Anthropic API error:', anthropicResp.status, errorText.substring(0, 300))
+      return NextResponse.json({ success: false, error: 'Anthropic API error' }, { status: 502 })
     }
 
     const anthropicData = await anthropicResp.json()
-    const textContent = anthropicData.content
-      ?.filter((b: { type: string }) => b.type === 'text')
-      .map((b: { text: string }) => b.text)
-      .join('') || '{}'
+    const textContent =
+      typeof anthropicData?.content?.[0]?.text === 'string' ? anthropicData.content[0].text : ''
+
+    if (!textContent || !textContent.trim()) {
+      return NextResponse.json({ success: false, error: 'Anthropic returned no text content' }, { status: 502 })
+    }
 
     let beatData: { scene_description: string; duration_seconds: number; keyframe_prompts: string[] }
     try {
@@ -149,7 +162,12 @@ Generate the beat now.`
     } catch {
       const jsonMatch = textContent.match(/```json\n?([\s\S]*?)\n?```/)
       if (jsonMatch) {
-        beatData = JSON.parse(jsonMatch[1])
+        try {
+          beatData = JSON.parse(jsonMatch[1])
+        } catch {
+          console.error('Failed to parse fenced progressive beat response:', textContent.substring(0, 300))
+          return NextResponse.json({ success: false, error: 'Failed to parse beat response JSON' }, { status: 500 })
+        }
       } else {
         console.error('Failed to parse progressive beat response:', textContent.substring(0, 300))
         return NextResponse.json({ success: false, error: 'Failed to parse beat response' }, { status: 500 })
@@ -186,6 +204,16 @@ Generate the beat now.`
       console.log(`✅ Progressive beat generated: ${beatId} — "${sceneDescription.substring(0, 60)}..."`)
     } catch (nocoErr) {
       console.error('⚠️ Failed to save progressive beat to NocoDB:', nocoErr)
+      const nocoMessage = nocoErr instanceof Error ? nocoErr.message : 'Unknown NocoDB error'
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Failed to persist generated beat data',
+          details: nocoMessage,
+          beatId,
+        },
+        { status: 500 }
+      )
     }
 
     return NextResponse.json({

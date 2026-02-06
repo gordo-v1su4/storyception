@@ -130,7 +130,7 @@ async function nextcloudUpload(imageBuffer: Buffer, remotePath: string): Promise
       'Authorization': `Basic ${auth}`,
       'Content-Type': 'image/png',
     },
-    body: imageBuffer,
+    body: new Uint8Array(imageBuffer),
   })
   
   return response.ok || response.status === 201 || response.status === 204

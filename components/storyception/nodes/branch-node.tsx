@@ -1,7 +1,7 @@
 "use client"
 
 import { memo } from "react"
-import { Handle, Position, type NodeProps } from "@xyflow/react"
+import { Handle, Position } from "@xyflow/react"
 import { motion } from "framer-motion"
 import { Check, Sparkles, ArrowRight, ImageIcon, Lock } from "lucide-react"
 import type { BranchOption } from "@/lib/types"
@@ -19,7 +19,7 @@ interface BranchNodeData {
   onSelect: () => void
 }
 
-export const BranchNode = memo(({ data }: NodeProps<BranchNodeData>) => {
+export const BranchNode = memo(({ data }: { data: BranchNodeData }) => {
   const { branch, branchIndex = 0, isSelected, isLocked = false, layout = "horizontal", onSelect } = data
   
   // Get unified color based on branch index (A, B, C)
@@ -112,7 +112,7 @@ export const BranchNode = memo(({ data }: NodeProps<BranchNodeData>) => {
         <div className={`p-1 bg-black ${isFaded ? 'opacity-40 grayscale' : ''}`}>
           <div className="grid grid-cols-3 gap-[1px] bg-zinc-800">
             {hasFrames ? (
-              frames.slice(0, 9).map((frame, idx) => (
+              frames.slice(0, 9).map((frame: string, idx: number) => (
                 <div key={idx} className="aspect-video bg-zinc-900 relative">
                   <img src={frame} alt={`KF${idx + 1}`} className="w-full h-full object-cover" />
                   <span className="absolute bottom-0 left-0 text-[7px] font-mono text-white/60 bg-black/70 px-1">
