@@ -2,15 +2,14 @@
  * N8N API Integration Routes
  * 
  * Connects to n8n.v1su4.dev for:
- * - Story generation (Gemini via fal.ai)
- * - Image generation (Nano Banana Pro - primary)
- * - Base image creation (fal.ai Flux Pro 2 - only if no user image)
+ * - Story generation (Google Gemini)
+ * - Image generation (Google Imagen 3 - primary)
  * 
  * Pipeline:
- * 1. User uploads reference image → Nano Banana creates 9 keyframes
- * 2. OR: fal.ai Flux Pro 2 creates base → Nano Banana creates 9 keyframes
+ * 1. User uploads reference image → Imagen 3 creates storyboard
+ * 2. OR: Imagen 3 creates base → Imagen 3 creates storyboard
  * 
- * NO ComfyUI - all image work via fal.ai + Nano Banana
+ * NO fal.ai - all image work via Google Imagen 3
  * 
  * API Reference: https://docs.n8n.io/api/api-reference/
  */

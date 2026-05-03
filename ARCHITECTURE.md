@@ -18,14 +18,14 @@ flowchart TD
     subgraph APIs["API Routes"]
         GenAPI["/api/story/generate\n(Claude Sonnet 4.6)"]
         BranchAPI["/api/story/branches\n(Claude - on demand)"]
-        ImgAPI["/api/images/generate\n(fal.ai Nano Banana Pro)"]
+        ImgAPI["/api/images/generate\n(Native Google Gemini 3 Pro Image)"]
         UploadAPI["/api/images/upload\n(Nextcloud WebDAV)"]
         StatusAPI["/api/story/status\n(Poll NocoDB)"]
     end
 
     subgraph External["External Services"]
         Claude["Anthropic Claude\nSonnet 4.6"]
-        Fal["fal.ai\nNano Banana Pro"]
+        Fal["Native Google Gemini 3 Pro Image\nGemini 3 Pro Image"]
         NC["Nextcloud\n(Image Storage)"]
         NocoDB["NocoDB\n(Database)"]
     end
@@ -53,13 +53,13 @@ flowchart TD
     Pick --> Generate["POST /api/story/generate"]
     Generate --> Story["Claude generates story\nbeats + keyframe prompts"]
     Story --> SaveDB["Save to NocoDB:\nSession + Beats + Keyframes"]
-    SaveDB --> GenImg1["Generate 1st beat grid\n(fal.ai → Nextcloud → NocoDB)"]
+    SaveDB --> GenImg1["Generate 1st beat grid\n(Native Google Gemini 3 Pro Image → Nextcloud → NocoDB)"]
     GenImg1 --> Reveal["Reveal Beat 1\nwith 3x3 keyframe grid"]
     Reveal --> Branch{"Beat has branches?\n(based on weight)"}
     Branch -->|"weight = 0\n(Opening/Closing)"| AutoAdvance["Auto-advance\nto next beat"]
     Branch -->|"weight > 0"| ShowBranch["POST /api/story/branches\nClaude generates\ncontext-aware options"]
     ShowBranch --> UserPick["User picks a path"]
-    UserPick --> GenNext["Generate next beat images\n(fal.ai pipeline)"]
+    UserPick --> GenNext["Generate next beat images\n(Native Google Gemini 3 Pro Image pipeline)"]
     GenNext --> RevealNext["Reveal next beat"]
     RevealNext --> Branch
     AutoAdvance --> GenNext2["Generate next beat images"]
@@ -72,7 +72,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    Prompt["9 Keyframe\nPrompts"] --> Fal["fal.ai\nNano Banana Pro"]
+    Prompt["9 Keyframe\nPrompts"] --> Fal["Native Google Gemini 3 Pro Image\nGemini 3 Pro Image"]
     Ref["Reference\nImage URL"] --> Fal
     Fal -->|"1 × 4K image\n(3×3 grid)"| Grid["Grid Image\n(PNG)"]
     Grid --> Sharp["sharp\n(slice into 9)"]
@@ -98,9 +98,9 @@ flowchart LR
 ```mermaid
 stateDiagram-v2
     [*] --> pending : Record created with prompt
-    pending --> processing : fal.ai call started
+    pending --> processing : Native Google Gemini 3 Pro Image call started
     processing --> ready : Image uploaded to Nextcloud, URL saved
-    processing --> error : fal.ai or upload failed
+    processing --> error : Native Google Gemini 3 Pro Image or upload failed
     error --> pending : Retry
 ```
 
@@ -144,8 +144,8 @@ Branches are NOT pre-generated. When the user reaches a beat:
 | Styling | Tailwind CSS 4 |
 | Flow Visualization | React Flow (@xyflow/react) |
 | Animation | Framer Motion |
-| LLM (Story) | Anthropic Claude Sonnet 4.6 |
-| Image Gen | fal.ai Nano Banana Pro |
+| LLM (Story) | Google Gemini 3 Flash Preview |
+| Image Gen | Native Google Gemini 3 Pro Image |
 | Image Storage | Nextcloud (WebDAV + public shares) |
 | Database | NocoDB (self-hosted) |
 | Image Processing | sharp (grid slicing + thumbnails) |
@@ -155,8 +155,7 @@ Branches are NOT pre-generated. When the user reaches a beat:
 ## Environment Variables
 
 ```
-ANTHROPIC_API_KEY      # Claude Sonnet 4.6
-FAL_KEY                # fal.ai image generation
+GOOGLE_GENERATIVE_AI_API_KEY  # Used for BOTH Gemini 3 Flash (Story) & Gemini 3 Pro Image (Visuals)
 NOCODB_BASE_URL        # NocoDB instance
 NOCODB_API_TOKEN       # NocoDB auth
 NOCODB_TABLE_SESSIONS  # mr4ilxbt1jsqf2l
