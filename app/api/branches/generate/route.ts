@@ -12,7 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 
-const N8N_BASE_URL = process.env.N8N_BASE_URL || 'https://n8n.v1su4.com'
+const N8N_BASE_URL = process.env.N8N_BASE_URL || 'https://n8n.v1su4.dev'
 const N8N_WEBHOOK_BRANCH = process.env.N8N_WEBHOOK_BRANCH_GENERATE || '/webhook/branch-generate'
 
 export interface BranchGenerationRequest {

@@ -10,7 +10,7 @@ from requests.auth import HTTPBasicAuth
 # Config - load from environment
 import os
 FAL_KEY = os.getenv("FAL_KEY")
-NEXTCLOUD_URL = os.getenv("NEXTCLOUD_BASE_URL", "https://nextcloud.v1su4.com")
+NEXTCLOUD_URL = os.getenv("NEXTCLOUD_BASE_URL", "https://cloud.v1su4.dev")
 NEXTCLOUD_USER = os.getenv("NEXTCLOUD_USERNAME", "admin")
 NEXTCLOUD_APP_PASSWORD = os.getenv("NEXTCLOUD_APP_PASSWORD")
 

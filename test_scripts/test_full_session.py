@@ -17,7 +17,7 @@ from requests.auth import HTTPBasicAuth
 FAL_KEY = os.getenv("FAL_KEY")
 
 # NocoDB  
-NOCODB_BASE_URL = os.getenv("NOCODB_BASE_URL", "https://nocodb.v1su4.com")
+NOCODB_BASE_URL = os.getenv("NOCODB_BASE_URL", "https://nocodb.v1su4.dev")
 NOCODB_API_TOKEN = os.getenv("NOCODB_API_TOKEN")
 
 # Table IDs
@@ -27,7 +27,7 @@ TABLE_BRANCHES = os.getenv("NOCODB_TABLE_BRANCHES", "mypczrrly1k8gsi")
 TABLE_KEYFRAMES = os.getenv("NOCODB_TABLE_KEYFRAMES", "m301ac822mwqpy0")
 
 # Nextcloud
-NEXTCLOUD_URL = os.getenv("NEXTCLOUD_BASE_URL", "https://nextcloud.v1su4.com")
+NEXTCLOUD_URL = os.getenv("NEXTCLOUD_BASE_URL", "https://cloud.v1su4.dev")
 NEXTCLOUD_USER = os.getenv("NEXTCLOUD_USERNAME", "admin")
 NEXTCLOUD_APP_PASSWORD = os.getenv("NEXTCLOUD_APP_PASSWORD")
 
@@ -261,10 +261,10 @@ def main():
     {public_url}
     
     Check NocoDB:
-    https://nocodb.v1su4.com
+    https://nocodb.v1su4.dev
     
     Check Nextcloud:
-    https://nextcloud.v1su4.com/apps/files/?dir=/storyception/{session_id}
+    https://cloud.v1su4.dev/apps/files/?dir=/storyception/{session_id}
     """)
 
 if __name__ == "__main__":

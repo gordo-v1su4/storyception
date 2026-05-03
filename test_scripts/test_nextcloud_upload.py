@@ -9,7 +9,7 @@ import base64
 from requests.auth import HTTPBasicAuth
 
 # Nextcloud config - load from environment
-NEXTCLOUD_URL = os.getenv("NEXTCLOUD_BASE_URL", "https://nextcloud.v1su4.com")
+NEXTCLOUD_URL = os.getenv("NEXTCLOUD_BASE_URL", "https://cloud.v1su4.dev")
 NEXTCLOUD_USER = os.getenv("NEXTCLOUD_USERNAME", "admin")
 NEXTCLOUD_APP_PASSWORD = os.getenv("NEXTCLOUD_APP_PASSWORD")
 
@@ -79,8 +79,8 @@ def create_public_share(path: str) -> str:
 
 def get_direct_download_url(share_url: str) -> str:
     """Convert share URL to direct download URL"""
-    # Nextcloud share URLs like: https://nextcloud.v1su4.com/s/ABC123
-    # Direct download: https://nextcloud.v1su4.com/s/ABC123/download
+    # Nextcloud share URLs like: https://cloud.v1su4.dev/s/ABC123
+    # Direct download: https://cloud.v1su4.dev/s/ABC123/download
     return f"{share_url}/download"
 
 def main():

@@ -16,14 +16,14 @@ FAL_KEY = os.getenv("FAL_KEY")
 NOCODB_API_TOKEN = os.getenv("NOCODB_API_TOKEN")
 
 # Nextcloud config
-NEXTCLOUD_URL = os.getenv("NEXTCLOUD_BASE_URL", "https://nextcloud.v1su4.com")
+NEXTCLOUD_URL = os.getenv("NEXTCLOUD_BASE_URL", "https://cloud.v1su4.dev")
 NEXTCLOUD_USER = os.getenv("NEXTCLOUD_USERNAME", "admin")
 NEXTCLOUD_APP_PASSWORD = os.getenv("NEXTCLOUD_APP_PASSWORD")
 WEBDAV_URL = f"{NEXTCLOUD_URL}/remote.php/dav/files/{NEXTCLOUD_USER}"
 OCS_SHARE_URL = f"{NEXTCLOUD_URL}/ocs/v2.php/apps/files_sharing/api/v1/shares"
 
 # NocoDB config
-NOCODB_BASE_URL = "https://nocodb.v1su4.com"
+NOCODB_BASE_URL = "https://nocodb.v1su4.dev"
 NOCODB_TABLE_KEYFRAMES = "m301ac822mwqpy0"
 
 # Auth for Nextcloud
@@ -226,7 +226,7 @@ def main():
     print(f"Public URL: {public_url}")
     if result:
         print(f"NocoDB Record ID: {result.get('Id', 'N/A')}")
-        print("\nCheck NocoDB at: https://nocodb.v1su4.com")
+        print("\nCheck NocoDB at: https://nocodb.v1su4.dev")
         print(f"View image at: {public_url}")
 
 if __name__ == "__main__":

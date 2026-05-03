@@ -16,9 +16,9 @@ import sharp from 'sharp'
 
 // Environment variables
 const FAL_KEY = process.env.FAL_KEY
-const NOCODB_BASE_URL = process.env.NOCODB_BASE_URL || 'https://nocodb.v1su4.com'
+const NOCODB_BASE_URL = process.env.NOCODB_BASE_URL || 'https://nocodb.v1su4.dev'
 const NOCODB_API_TOKEN = process.env.NOCODB_API_TOKEN || ''
-const NEXTCLOUD_BASE_URL = process.env.NEXTCLOUD_BASE_URL || 'https://nextcloud.v1su4.com'
+const NEXTCLOUD_BASE_URL = process.env.NEXTCLOUD_BASE_URL || 'https://cloud.v1su4.dev'
 const NEXTCLOUD_USERNAME = process.env.NEXTCLOUD_USERNAME || 'admin'
 const NEXTCLOUD_APP_PASSWORD = process.env.NEXTCLOUD_APP_PASSWORD || ''
 

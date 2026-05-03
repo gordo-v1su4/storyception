@@ -1,7 +1,7 @@
 /**
  * N8N API Integration Routes
  * 
- * Connects to n8n.v1su4.com for:
+ * Connects to n8n.v1su4.dev for:
  * - Story generation (Gemini via fal.ai)
  * - Image generation (Nano Banana Pro - primary)
  * - Base image creation (fal.ai Flux Pro 2 - only if no user image)
@@ -18,7 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 // N8N Configuration
-const N8N_BASE_URL = process.env.N8N_BASE_URL || 'https://n8n.v1su4.com'
+const N8N_BASE_URL = process.env.N8N_BASE_URL || 'https://n8n.v1su4.dev'
 const N8N_API_KEY = process.env.N8N_API_KEY || ''
 
 // Existing webhook path from Story-ception Master Automation

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 
-const NEXTCLOUD_BASE_URL = process.env.NEXTCLOUD_BASE_URL || "https://nextcloud.v1su4.com"
+const NEXTCLOUD_BASE_URL = process.env.NEXTCLOUD_BASE_URL || "https://cloud.v1su4.dev"
 const NEXTCLOUD_USERNAME = process.env.NEXTCLOUD_USERNAME || "admin"
 const NEXTCLOUD_APP_PASSWORD = process.env.NEXTCLOUD_APP_PASSWORD || ""
 const NEXTCLOUD_UPLOAD_PATH = process.env.NEXTCLOUD_UPLOAD_PATH || "/Storyception"
@@ -40,6 +40,11 @@ async function nextcloudUpload(buffer: Buffer, remotePath: string, contentType: 
   return response.ok || response.status === 201 || response.status === 204
 }
 
+function inlineDataUrlFromFile(file: File, buffer: Buffer): string {
+  const mime = file.type || "image/png"
+  return `data:${mime};base64,${buffer.toString("base64")}`
+}
+
 async function nextcloudCreateShare(path: string): Promise<string | null> {
   const auth = Buffer.from(`${NEXTCLOUD_USERNAME}:${NEXTCLOUD_APP_PASSWORD}`).toString("base64")
   const response = await fetch(NEXTCLOUD_SHARE_API_URL, {
@@ -68,14 +73,35 @@ async function nextcloudCreateShare(path: string): Promise<string | null> {
 
 export async function POST(request: NextRequest) {
   try {
-    if (!NEXTCLOUD_APP_PASSWORD) {
-      return NextResponse.json({ success: false, error: "NEXTCLOUD_APP_PASSWORD not configured" }, { status: 500 })
-    }
-
     const formData = await request.formData()
     const files = formData.getAll("images")
     if (!files || files.length === 0) {
       return NextResponse.json({ success: false, error: "No images provided" }, { status: 400 })
+    }
+
+    // Local dev without Nextcloud: fal.image models accept data URIs; production should use WebDAV + public URLs.
+    if (!NEXTCLOUD_APP_PASSWORD) {
+      if (process.env.NODE_ENV !== "development") {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "NEXTCLOUD_APP_PASSWORD not configured. Set it in .env.local (see env.example), or run `bun dev` to use inline reference images in development only.",
+          },
+          { status: 500 }
+        )
+      }
+
+      const urls: string[] = []
+      for (const file of files) {
+        if (!(file instanceof File)) continue
+        const arrayBuffer = await file.arrayBuffer()
+        urls.push(inlineDataUrlFromFile(file, Buffer.from(arrayBuffer)))
+      }
+      if (urls.length === 0) {
+        return NextResponse.json({ success: false, error: "No valid image files" }, { status: 400 })
+      }
+      return NextResponse.json({ success: true, urls })
     }
 
     const uploadRoot = (NEXTCLOUD_UPLOAD_PATH || "/Storyception")

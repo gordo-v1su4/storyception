@@ -12,11 +12,11 @@ import sharp from 'sharp'
 
 const FAL_KEY = process.env.FAL_KEY
 const FAL_API_URL = 'https://fal.run/fal-ai/nano-banana-pro/edit'
-const NOCODB_BASE_URL = process.env.NOCODB_BASE_URL || 'https://nocodb.v1su4.com'
+const NOCODB_BASE_URL = process.env.NOCODB_BASE_URL || 'https://nocodb.v1su4.dev'
 const NOCODB_API_TOKEN = process.env.NOCODB_API_TOKEN || ''
 const NOCODB_TABLE_BEATS = process.env.NOCODB_TABLE_BEATS || 'may145m0gc24nmu'
 const NOCODB_TABLE_KEYFRAMES = process.env.NOCODB_TABLE_KEYFRAMES || 'mc5xw2syf1fxek8'
-const NEXTCLOUD_BASE_URL = process.env.NEXTCLOUD_BASE_URL || 'https://nextcloud.v1su4.com'
+const NEXTCLOUD_BASE_URL = process.env.NEXTCLOUD_BASE_URL || 'https://cloud.v1su4.dev'
 const NEXTCLOUD_USERNAME = process.env.NEXTCLOUD_USERNAME || 'admin'
 const NEXTCLOUD_APP_PASSWORD = process.env.NEXTCLOUD_APP_PASSWORD || ''
 const NEXTCLOUD_UPLOAD_PATH = process.env.NEXTCLOUD_UPLOAD_PATH || '/Storyception'

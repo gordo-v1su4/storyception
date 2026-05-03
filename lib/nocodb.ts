@@ -11,7 +11,7 @@
  * - storyception_keyframes: Individual keyframe images
  */
 
-const NOCODB_BASE_URL = process.env.NOCODB_BASE_URL || 'https://nocodb.v1su4.com'
+const NOCODB_BASE_URL = process.env.NOCODB_BASE_URL || 'https://nocodb.v1su4.dev'
 const NOCODB_API_TOKEN = process.env.NOCODB_API_TOKEN || ''
 const NOCODB_BASE_ID = process.env.NOCODB_BASE_ID || 'pce7ccvwdlz09bx'
 
@@ -402,7 +402,7 @@ export function generateKeyframeId(beatId: string, branchId: string | null, fram
 }
 
 // Nextcloud Configuration (S3-compatible storage for public URL access)
-const NEXTCLOUD_URL = process.env.NEXTCLOUD_URL || 'https://nextcloud.v1su4.com'
+const NEXTCLOUD_URL = process.env.NEXTCLOUD_URL || 'https://cloud.v1su4.dev'
 const NEXTCLOUD_USER = process.env.NEXTCLOUD_USER || 'admin'
 const NEXTCLOUD_APP_PASSWORD = process.env.NEXTCLOUD_APP_PASSWORD || ''
 
