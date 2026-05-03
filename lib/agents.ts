@@ -1,4 +1,6 @@
+import './adk-env';
 import { LlmAgent as Agent, FunctionTool as Tool } from '@google/adk';
+import { getGeminiApiKey } from './gemini-api-key';
 import { 
   createSession, 
   updateSession, 
@@ -41,11 +43,15 @@ export const visualGenerationTool = new Tool({
   description: 'Generates a 3x3 cinematic storyboard grid using the native Gemini 3 Pro Image model.',
   execute: async (args: any) => {
     const { prompt, referenceImageBase64, mimeType } = args;
-    const API_KEY = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    const API_KEY = getGeminiApiKey();
     const MODEL = "gemini-3-pro-image-preview";
     const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`;
 
-    if (!API_KEY) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY not configured');
+    if (!API_KEY) {
+      throw new Error(
+        'No Gemini API key: set GOOGLE_GENERATIVE_AI_API_KEY, GOOGLE_GENAI_API_KEY, or GEMINI_API_KEY'
+      );
+    }
 
     const payload = {
       contents: [{
@@ -92,13 +98,9 @@ export const visualGenerationTool = new Tool({
   }
 });
 
-/**
- * Narrative Agent - Generates story structure and branches
- */
-export const NarrativeAgent = new Agent({
-  name: 'NarrativeAgent',
+const narrativeAgentDef = {
   description: 'Expert screenwriter that plans story arcs and generates context-aware branches.',
-  model: 'gemini-3-flash-preview',
+  model: 'gemini-3-flash-preview' as const,
   instruction: `
     You are an expert screenwriter and interactive story designer.
     Your goal is to generate compelling story beats and branching options.
@@ -112,16 +114,12 @@ export const NarrativeAgent = new Agent({
     - Create 2-3 distinct paths that feel like meaningful choices.
     - Ensure branches align with the desired story outcome (e.g., Happy Ending).
   `,
-  tools: [persistenceTool]
-});
+  tools: [persistenceTool],
+};
 
-/**
- * Visual Agent - Generates keyframe prompts and image orchestration
- */
-export const VisualAgent = new Agent({
-  name: 'VisualAgent',
+const visualAgentDef = {
   description: 'Storyboard artist that creates detailed visual prompts for AI image generation.',
-  model: 'gemini-3-pro-image-preview',
+  model: 'gemini-3-pro-image-preview' as const,
   instruction: `
     You are a professional storyboard artist using the native Nano Banana Pro (Gemini 3 Pro Image) system.
     For each story beat, you generate 9 keyframe prompts.
@@ -129,5 +127,14 @@ export const VisualAgent = new Agent({
     CRITICAL: You MUST use the 'visual_generation_tool' to create the actual storyboard grid for every beat. 
     You MUST provide the reference image in base64 format (provided in the user context) to the tool.
   `,
-  tools: [persistenceTool, visualGenerationTool]
-});
+  tools: [persistenceTool, visualGenerationTool],
+};
+
+/** Each SequentialAgent needs its own sub-agent instances (ADK enforces one parent per agent). */
+export function createNarrativeAgent(name: string) {
+  return new Agent({ name, ...narrativeAgentDef });
+}
+
+export function createVisualAgent(name: string) {
+  return new Agent({ name, ...visualAgentDef });
+}

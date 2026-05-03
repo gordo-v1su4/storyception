@@ -1,0 +1,15 @@
+[
+  {
+    "keyframe_id": "_example_kf_001",
+    "session_id": "_example_delete_me",
+    "beat_id": "_example_beat_001",
+    "branch_id": "",
+    "frame_index": 1,
+    "grid_row": 0,
+    "grid_col": 0,
+    "prompt": "Wide establishing shot of the ordinary world.",
+    "image_url": "",
+    "status": "pending",
+    "created_at": "2026-05-03T12:00:00.000Z"
+  }
+]

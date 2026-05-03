@@ -10,6 +10,9 @@ build/
 dist/
 dev/
 
+# Storyception local persistence (when NocoDB tables absent)
+.data/
+
 # Environment files
 .env
 .env.*

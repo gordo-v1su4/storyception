@@ -1,0 +1,2 @@
+branch_id,beat_id,session_id,branch_index,branch_type,title,description,duration,keyframes_json,is_selected,inception_depth,parent_branch_id,created_at
+_example_branch_001,_example_beat_001,_example_delete_me,0,narrative,Example path A,What happens if the hero chooses confrontation.,6s,,false,0,,2026-05-03T12:00:00.000Z

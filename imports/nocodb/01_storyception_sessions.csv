@@ -1,0 +1,2 @@
+session_id,user_id,archetype,outcome,reference_image_url,status,current_beat,total_beats,story_data_json,created_at,updated_at
+_example_delete_me,,Hero Journey,Happy Ending,,active,1,15,,2026-05-03T12:00:00.000Z,2026-05-03T12:00:00.000Z

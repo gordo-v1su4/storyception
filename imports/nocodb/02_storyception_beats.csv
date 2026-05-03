@@ -1,0 +1,2 @@
+beat_id,session_id,beat_index,beat_label,description,generated_idea,duration,percent_of_total,selected_branch_id,keyframes_json,status,created_at
+_example_beat_001,_example_delete_me,1,1. THE ORDINARY WORLD,Example beat description.,,2 min,8,,,pending,2026-05-03T12:00:00.000Z

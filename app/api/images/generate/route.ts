@@ -5,10 +5,9 @@ import {
   updateBeat,
   nextcloudConfig
 } from '@/lib/nocodb'
+import { getGeminiApiKey } from '@/lib/gemini-api-key'
 
-const GOOGLE_API_KEY = process.env.GOOGLE_GENERATIVE_AI_API_KEY
-const MODEL = "gemini-3-pro-image-preview"
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GOOGLE_API_KEY}`
+const MODEL = 'gemini-3-pro-image-preview'
 
 async function nextcloudUpload(imageBuffer: Buffer, remotePath: string): Promise<string | null> {
   const auth = Buffer.from(`${nextcloudConfig.user}:${nextcloudConfig.appPassword}`).toString('base64')
@@ -53,9 +52,19 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { beatId, sessionId, keyframePrompts, referenceImageBase64 } = body
 
-    if (!GOOGLE_API_KEY) {
-      return NextResponse.json({ success: false, error: 'GOOGLE_GENERATIVE_AI_API_KEY not configured' }, { status: 500 })
+    const apiKey = getGeminiApiKey()
+    if (!apiKey) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'No Gemini API key: set GOOGLE_GENERATIVE_AI_API_KEY, GOOGLE_GENAI_API_KEY, or GEMINI_API_KEY',
+        },
+        { status: 500 }
+      )
     }
+
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`
 
     // 1. Generate Storyboard with Native Nano Banana Pro (Gemini 3 Pro Image)
     const prompt = `Transform the provided reference image into a cinematic sequence of 9 keyframes arranged in a 3x3 grid. Keyframes: ${keyframePrompts.join(' | ')}`
@@ -80,7 +89,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const response = await fetch(ENDPOINT, {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

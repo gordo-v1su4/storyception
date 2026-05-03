@@ -1,0 +1,17 @@
+[
+  {
+    "branch_id": "_example_branch_001",
+    "beat_id": "_example_beat_001",
+    "session_id": "_example_delete_me",
+    "branch_index": 0,
+    "branch_type": "narrative",
+    "title": "Example path A",
+    "description": "What happens if the hero chooses confrontation.",
+    "duration": "6s",
+    "keyframes_json": "",
+    "is_selected": false,
+    "inception_depth": 0,
+    "parent_branch_id": "",
+    "created_at": "2026-05-03T12:00:00.000Z"
+  }
+]
