@@ -92,6 +92,14 @@
     background: rgb(255 255 255 / 0.12);
     color: inherit;
   }
+
+  /* Story opening panel: Inter stack (matches dark prototype), decoupled from body mono */
+  .opening-panel-root {
+    font-family: var(--font-inter), ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 }
 
 /* Custom scrollbar */
@@ -116,6 +124,19 @@
 /* Hide scrollbar utility */
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+/* IDE-style opening panel scrollbars */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.08);
+  border-radius: 999px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 0.16);
 }
 
 .hide-scrollbar {

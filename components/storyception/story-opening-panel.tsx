@@ -1,9 +1,32 @@
 "use client"
 
-import { useState, useCallback, useRef, useEffect, useMemo } from "react"
-import { archetypes, outcomes, beatStructures } from "@/lib/data"
+import { useMemo, useRef, useState, useEffect, useCallback, type ReactNode } from "react"
+import {
+  OPENING_ARCHETYPES,
+  OPENING_OUTCOMES,
+  OPENING_CATEGORIES,
+  OPENING_ARCHETYPE_ID_TO_API_INDEX,
+  type OpeningArchetype,
+  type OpeningOutcome,
+} from "@/lib/story-opening-data"
+import { archetypes, outcomes } from "@/lib/data"
 import type { StoryBeat } from "@/lib/types"
 import { getBeatPercentage } from "@/lib/story-generator"
+
+type RefSlot = { id: string; url: string; name: string; file: File }
+
+const accentText: Record<string, string> = {
+  cyan: "text-cyan-400",
+  fuchsia: "text-fuchsia-400",
+  amber: "text-amber-400",
+}
+
+const OUTCOME_ID_TO_INDEX: Record<string, number> = {
+  happy: 0,
+  tragedy: 1,
+  redemption: 2,
+  ambiguous: 3,
+}
 
 interface StoryOpeningPanelProps {
   onClose: () => void
@@ -20,56 +43,93 @@ interface StoryOpeningPanelProps {
 }
 
 export function StoryOpeningPanel({ onClose, onGenerate }: StoryOpeningPanelProps) {
-  const [selectedArchetypeIndex, setSelectedArchetypeIndex] = useState<number | null>(null)
-  const [imageSlots, setImageSlots] = useState<Array<{ file: File; url: string }>>([])
-  const [selectedOutcomeIndex, setSelectedOutcomeIndex] = useState<number | null>(null)
-  const [isDragging, setIsDragging] = useState(false)
+  const [archetype, setArchetype] = useState<OpeningArchetype | null>(null)
+  const [hovered, setHovered] = useState<OpeningArchetype | null>(null)
+  const [outcome, setOutcome] = useState<OpeningOutcome | null>(null)
+  const [images, setImages] = useState<RefSlot[]>([])
+  const [category, setCategory] = useState<(typeof OPENING_CATEGORIES)[number]>("All")
+  const [drag, setDrag] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const imagesRef = useRef(images)
+  imagesRef.current = images
 
-  const flatArchetypes = useMemo(() => [...archetypes], [])
+  const filtered = useMemo(
+    () =>
+      category === "All"
+        ? OPENING_ARCHETYPES
+        : OPENING_ARCHETYPES.filter((a) => a.category === category),
+    [category]
+  )
 
-  const allDone =
-    selectedArchetypeIndex !== null && imageSlots.length > 0 && selectedOutcomeIndex !== null
+  const completion = useMemo(() => {
+    let score = 0
+    if (archetype) score += 1
+    if (images.length > 0) score += 1
+    if (outcome) score += 1
+    return score
+  }, [archetype, images.length, outcome])
 
-  const imageSlotsRef = useRef(imageSlots)
-  imageSlotsRef.current = imageSlots
+  const ready = completion === 3
+  const showcase = hovered ?? archetype
 
   useEffect(() => {
     return () => {
-      imageSlotsRef.current.forEach((s) => URL.revokeObjectURL(s.url))
+      imagesRef.current.forEach((i) => URL.revokeObjectURL(i.url))
     }
   }, [])
 
-  const handleFiles = useCallback(
-    (files: FileList | null) => {
-      if (!files?.length) return
-      const remaining = 3 - imageSlots.length
-      if (remaining <= 0) return
-      const toAdd = Array.from(files)
-        .filter((f) => f.type.startsWith("image/"))
-        .slice(0, remaining)
-      if (toAdd.length === 0) return
-      setImageSlots((prev) => [
-        ...prev,
-        ...toAdd.map((file) => ({ file, url: URL.createObjectURL(file) })),
-      ].slice(0, 3))
-    },
-    [imageSlots.length]
-  )
-
-  const removeImage = useCallback((index: number) => {
-    setImageSlots((prev) => {
-      const next = [...prev]
-      const [removed] = next.splice(index, 1)
-      if (removed?.url) URL.revokeObjectURL(removed.url)
-      return next
+  const resetForm = useCallback(() => {
+    setImages((prev) => {
+      prev.forEach((i) => URL.revokeObjectURL(i.url))
+      return []
     })
+    setArchetype(null)
+    setOutcome(null)
+    setCategory("All")
+    setHovered(null)
+    setError(null)
   }, [])
 
-  const handleBegin = async () => {
-    if (selectedArchetypeIndex === null || selectedOutcomeIndex === null || imageSlots.length === 0) {
+  const handleFiles = (files: FileList | null) => {
+    if (!files) return
+    const remaining = 3 - images.length
+    if (remaining <= 0) return
+    const next: RefSlot[] = []
+    for (const f of Array.from(files)) {
+      if (!f.type.startsWith("image/")) continue
+      if (next.length >= remaining) break
+      next.push({
+        id: `${f.name}-${Date.now()}-${Math.random()}`,
+        url: URL.createObjectURL(f),
+        name: f.name,
+        file: f,
+      })
+    }
+    if (next.length === 0) return
+    setImages((prev) => [...prev, ...next].slice(0, 3))
+  }
+
+  const removeImage = (id: string) => {
+    setImages((prev) => {
+      const target = prev.find((i) => i.id === id)
+      if (target) URL.revokeObjectURL(target.url)
+      return prev.filter((i) => i.id !== id)
+    })
+  }
+
+  const handleGenerate = async () => {
+    if (!archetype || !outcome || images.length === 0) return
+
+    const apiIndex = OPENING_ARCHETYPE_ID_TO_API_INDEX[archetype.id]
+    if (apiIndex === undefined) {
+      setError("Unknown archetype mapping")
+      return
+    }
+    const outIdx = OUTCOME_ID_TO_INDEX[outcome.id]
+    if (outIdx === undefined) {
+      setError("Unknown outcome")
       return
     }
 
@@ -78,7 +138,7 @@ export function StoryOpeningPanel({ onClose, onGenerate }: StoryOpeningPanelProp
 
     try {
       const formData = new FormData()
-      imageSlots.forEach((s) => formData.append("images", s.file))
+      images.forEach((s) => formData.append("images", s.file))
 
       const uploadResponse = await fetch("/api/images/upload", {
         method: "POST",
@@ -90,14 +150,14 @@ export function StoryOpeningPanel({ onClose, onGenerate }: StoryOpeningPanelProp
       }
       const uploadedUrls: string[] = uploadData.urls || []
 
-      const arch = archetypes[selectedArchetypeIndex]
-      const out = outcomes[selectedOutcomeIndex]
+      const arch = archetypes[apiIndex]
+      const out = outcomes[outIdx]
 
       const response = await fetch("/api/story/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          archetypeIndex: selectedArchetypeIndex,
+          archetypeIndex: apiIndex,
           archetypeName: arch.title,
           outcomeName: out.title,
           referenceImages: uploadedUrls,
@@ -146,16 +206,7 @@ export function StoryOpeningPanel({ onClose, onGenerate }: StoryOpeningPanelProp
         }
       )
 
-      onGenerate(
-        beats,
-        selectedArchetypeIndex,
-        uploadedUrls[0],
-        data.storyId,
-        data.title,
-        data.logline,
-        data.storySeed,
-        out.title
-      )
+      onGenerate(beats, apiIndex, uploadedUrls[0], data.storyId, data.title, data.logline, data.storySeed, out.title)
       setIsGenerating(false)
       onClose()
     } catch (err) {
@@ -166,51 +217,77 @@ export function StoryOpeningPanel({ onClose, onGenerate }: StoryOpeningPanelProp
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-[#0a0a0a] text-[#a0a0a0] font-sans antialiased">
-      {/* Top bar */}
-      <div className="flex flex-shrink-0 items-center justify-between border-b border-[#1a1a1a] px-5 py-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <svg
-            className="h-5 w-5 flex-shrink-0 text-[#555]"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18" />
-            <path d="m7 2 0 20" />
-            <path d="m17 2 0 20" />
-            <path d="M2 12h20" />
-            <path d="M2 7h5" />
-            <path d="M2 17h5" />
-            <path d="M17 7h5" />
-            <path d="M17 17h5" />
-          </svg>
-          <span className="truncate text-[13px] font-medium tracking-tight text-[#ccc]">
-            Create New Story
-          </span>
-          <span className="hidden text-[11px] text-[#444] sm:inline">
-            — choose structure, add references, pick outcome
-          </span>
+    <div className="opening-panel-root fixed inset-0 z-[100] flex min-h-0 flex-col bg-[#0a0a0a] text-[#a0a0a0] selection:bg-cyan-500/15 selection:text-[#e6edf3]">
+      <header className="flex h-9 flex-shrink-0 select-none items-center border-b border-[#1a1a1a] bg-[#0e0e0e] px-3 text-[12px] text-[#666]">
+        <div className="flex items-center gap-2">
+          <div className="flex h-4 w-4 items-center justify-center rounded-sm bg-cyan-600 text-[10px] font-bold text-[#0a0a0a]">
+            S
+          </div>
+          <span className="text-[#ccc]">Storyception</span>
+          <span className="text-[#444]">—</span>
+          <span className="text-[#888]">New Story</span>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="cursor-pointer text-[#444] transition-colors hover:text-[#888]"
-          aria-label="Close"
-        >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18 6 6 18" />
-            <path d="m6 6 12 12" />
-          </svg>
-        </button>
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            type="button"
+            className="flex h-7 w-7 items-center justify-center text-[#555] hover:bg-white/[0.04] hover:text-[#888]"
+            title="Close"
+            onClick={onClose}
+          >
+            ✕
+          </button>
+        </div>
+      </header>
+
+      <div className="flex h-7 flex-shrink-0 select-none items-center gap-1 border-b border-[#1a1a1a] bg-[#0e0e0e] px-2 text-[12px] text-[#888]">
+        {["File", "Edit", "View", "Story", "Tools", "Help"].map((m) => (
+          <button key={m} type="button" className="h-6 rounded-sm px-2 hover:bg-white/[0.06]">
+            {m}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex h-10 flex-shrink-0 items-center gap-3 border-b border-[#1a1a1a] bg-[#0e0e0e] px-3 text-[12px] text-[#888]">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={resetForm}
+            className="h-7 rounded-sm border border-transparent px-2 hover:border-white/[0.08] hover:bg-white/[0.05]"
+            title="New"
+          >
+            ＋ New
+          </button>
+          <button
+            type="button"
+            className="h-7 rounded-sm border border-transparent px-2 hover:border-white/[0.08] hover:bg-white/[0.05]"
+            title="Open (coming soon)"
+            disabled
+          >
+            ⌂ Open
+          </button>
+          <button
+            type="button"
+            className="h-7 rounded-sm border border-transparent px-2 hover:border-white/[0.08] hover:bg-white/[0.05]"
+            title="Save (coming soon)"
+            disabled
+          >
+            💾 Save
+          </button>
+        </div>
+        <div className="h-5 w-px bg-[#1a1a1a]" />
+        <div className="flex items-center gap-2 text-[#555]">
+          <span>Project</span>
+          <span className="text-[#444]">›</span>
+          <span className="text-[#b0b0b0]">Untitled Story</span>
+        </div>
+        <div className="ml-auto flex items-center gap-2 text-[11px] text-[#555]">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          <span>Ready</span>
+        </div>
       </div>
 
       {error && (
-        <div className="flex-shrink-0 border-b border-red-500/30 bg-red-500/10 px-5 py-2 text-center text-[12px] text-red-400">
+        <div className="flex-shrink-0 border-b border-red-500/40 bg-red-950/40 px-3 py-2 text-center text-[12px] text-red-300">
           {error}
           <button type="button" className="ml-3 underline" onClick={() => setError(null)}>
             Dismiss
@@ -219,120 +296,105 @@ export function StoryOpeningPanel({ onClose, onGenerate }: StoryOpeningPanelProp
       )}
 
       {isGenerating && (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#0a0a0a]/95">
-          <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-white/70" />
-          <p className="mt-4 text-[11px] font-medium uppercase tracking-[0.15em] text-[#666]">
-            Crafting your story
-          </p>
+        <div className="absolute inset-0 z-[110] flex flex-col items-center justify-center bg-[#0a0a0a]/95">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-cyan-500/25 border-t-cyan-400" />
+          <p className="mt-4 text-[11px] font-medium uppercase tracking-wider text-[#555]">Generating story…</p>
         </div>
       )}
 
-      {/* Main */}
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <div className="flex min-h-[45vh] min-w-0 flex-1 flex-col border-b border-[#1a1a1a] lg:border-b-0 lg:border-r">
-          <div className="flex-shrink-0 px-5 pb-1.5 pt-3">
-            <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-[#444]">
-              1 · Narrative Archetype
-            </span>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
-            <div className="grid grid-cols-1 gap-px bg-[#1a1a1a] overflow-hidden rounded-lg sm:grid-cols-2 lg:grid-cols-3">
-              {flatArchetypes.map((a) => {
-                const idx = archetypes.indexOf(a)
-                const sel = selectedArchetypeIndex === idx
-                const beatCount = beatStructures[idx]?.length ?? 0
-                return (
-                  <button
-                    key={`${a.title}-${idx}`}
-                    type="button"
-                    onClick={() => setSelectedArchetypeIndex(sel ? null : idx)}
-                    className={`relative cursor-pointer p-3 text-left transition-colors duration-100 ${
-                      sel ? "z-10 bg-[#141414] ring-1 ring-white/[0.12]" : "bg-[#0e0e0e] hover:bg-[#131313]"
-                    }`}
-                  >
-                    {sel && (
-                      <div className="absolute right-2 top-2 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white">
-                        <svg className="h-2.5 w-2.5 text-black" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      </div>
-                    )}
-                    <div className="text-[12px] font-semibold uppercase leading-tight tracking-wide text-[#e0e0e0]">
-                      {a.title}
-                    </div>
-                    <div className="mt-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-[#555]">
-                      {a.subtitle}
-                    </div>
-                    <div className="mt-1.5 text-[11px] leading-snug text-[#666]">{a.desc}</div>
-                    <div className="mt-2 flex items-center justify-between border-t border-[#1a1a1a] pt-1.5">
-                      <span className="text-[9px] text-[#3a3a3a]">{a.example}</span>
-                      <span className="tabular-nums text-[9px] text-[#3a3a3a]">{beatCount} beats</span>
-                    </div>
-                  </button>
-                )
-              })}
+      <main className="min-h-0 flex-1 overflow-hidden p-3">
+        <div className="grid h-[min(100%,calc(100dvh-8.5rem))] grid-cols-1 gap-3 lg:grid-cols-12">
+          <section className="flex min-h-[320px] flex-col overflow-hidden rounded-sm border border-[#1a1a1a] bg-[#0a0a0a] lg:col-span-8">
+            <div className="flex h-9 flex-shrink-0 items-center border-b border-[#1a1a1a] bg-[#0e0e0e] px-3 text-[11px] font-medium uppercase tracking-wider text-[#666]">
+              <span className="text-[#e0e0e0]">Story Configuration</span>
+              <span className="ml-3 normal-case tracking-normal text-[#444]">— Choose your narrative structure</span>
             </div>
-          </div>
-        </div>
 
-        <div className="flex w-full flex-shrink-0 flex-col lg:w-[300px]">
-          <div className="flex min-h-[180px] flex-1 flex-col border-b border-[#1a1a1a]">
-            <div className="flex-shrink-0 px-4 pb-1.5 pt-3">
-              <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-[#444]">
-                2 · Reference Images
-              </span>
-            </div>
-            <div className="flex min-h-0 flex-1 flex-col px-4 pb-3">
-              {imageSlots.length > 0 && (
-                <div className="mb-2 flex flex-wrap gap-1.5">
-                  {imageSlots.map((slot, i) => (
-                    <div key={slot.url} className="group relative h-16 w-16 overflow-hidden rounded bg-[#111]">
-                      <img src={slot.url} alt="" className="h-full w-full object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => removeImage(i)}
-                        className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
-                        aria-label="Remove image"
-                      >
-                        <svg className="h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M18 6 6 18" />
-                          <path d="m6 6 12 12" />
-                        </svg>
-                      </button>
-                    </div>
+            <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
+              <Section number={1} title="Narrative Archetype" status={archetype ? "done" : "pending"}>
+                <div className="mb-3 flex flex-wrap items-center gap-1">
+                  {OPENING_CATEGORIES.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setCategory(c)}
+                      className={`h-7 rounded-sm border px-2.5 text-[12px] transition-colors ${
+                        category === c
+                          ? "border-cyan-700 bg-cyan-600 text-[#0a0a0a] hover:bg-cyan-500"
+                          : "border-[#1a1a1a] bg-[#131313] text-[#b0b0b0] hover:bg-[#161616]"
+                      }`}
+                    >
+                      {c}
+                    </button>
                   ))}
+                  <span className="ml-auto text-[11px] text-[#555]">{filtered.length} templates</span>
                 </div>
-              )}
-              {imageSlots.length < 3 && (
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {filtered.map((a) => {
+                    const selected = archetype?.id === a.id
+                    return (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => setArchetype(a)}
+                        onMouseEnter={() => setHovered(a)}
+                        onMouseLeave={() => setHovered(null)}
+                        className={`rounded-sm border p-3 text-left transition-colors ${
+                          selected
+                            ? "border-cyan-600/50 bg-[#0e1620] ring-1 ring-cyan-500/15"
+                            : "border-[#1a1a1a] bg-[#131313] hover:border-[#2a2a2a] hover:bg-[#161616]"
+                        }`}
+                      >
+                        <div className="mb-1.5 flex items-start justify-between">
+                          <div className="text-[13px] font-medium leading-tight text-[#e0e0e0]">{a.name}</div>
+                          {selected && (
+                            <div className="ml-2 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-cyan-500 text-[10px] text-[#0a0a0a]">
+                              ✓
+                            </div>
+                          )}
+                        </div>
+                        <div className={`mb-2 text-[10px] uppercase tracking-wider ${accentText[a.accent]}`}>{a.engine}</div>
+                        <div className="mb-3 min-h-[2.5rem] text-[12px] leading-snug text-[#666]">{a.description}</div>
+                        <div className="flex items-center justify-between border-t border-[#1a1a1a] pt-2 text-[11px]">
+                          <span className="truncate pr-2 italic text-[#555]">{a.examples}</span>
+                          <span className="shrink-0 tabular-nums text-[#888]">{a.beats} beats</span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </Section>
+
+              <Divider />
+
+              <Section
+                number={2}
+                title="Reference Images"
+                status={images.length > 0 ? "done" : "pending"}
+                subtitle="1–3 images"
+              >
                 <div
                   role="button"
                   tabIndex={0}
-                  onKeyDown={(e) => e.key === "Enter" && inputRef.current?.click()}
+                  onKeyDown={(e) => e.key === "Enter" && fileRef.current?.click()}
                   onDragOver={(e) => {
                     e.preventDefault()
-                    setIsDragging(true)
+                    setDrag(true)
                   }}
-                  onDragLeave={() => setIsDragging(false)}
+                  onDragLeave={() => setDrag(false)}
                   onDrop={(e) => {
                     e.preventDefault()
-                    setIsDragging(false)
+                    setDrag(false)
                     handleFiles(e.dataTransfer.files)
                   }}
-                  onClick={() => inputRef.current?.click()}
-                  className={`flex min-h-[120px] flex-1 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed transition-colors ${
-                    isDragging ? "border-[#444] bg-[#111]" : "border-[#1e1e1e] bg-transparent hover:border-[#333]"
+                  onClick={() => fileRef.current?.click()}
+                  className={`cursor-pointer rounded-sm border border-dashed p-4 transition-colors ${
+                    drag ? "border-cyan-500 bg-cyan-950/20" : "border-[#252525] bg-[#131313] hover:bg-[#161616]"
                   }`}
                 >
-                  <svg className="mb-1 h-5 w-5 text-[#2a2a2a]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-                    <circle cx="9" cy="9" r="2" />
-                    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-                  </svg>
-                  <span className="text-[10px] text-[#333]">
-                    Drop or click · {imageSlots.length}/3
-                  </span>
                   <input
-                    ref={inputRef}
+                    ref={fileRef}
                     type="file"
                     accept="image/*"
                     multiple
@@ -342,92 +404,283 @@ export function StoryOpeningPanel({ onClose, onGenerate }: StoryOpeningPanelProp
                       e.target.value = ""
                     }}
                   />
+                  <div className="grid grid-cols-3 gap-2">
+                    {[0, 1, 2].map((i) => {
+                      const img = images[i]
+                      if (img) {
+                        return (
+                          <div
+                            key={img.id}
+                            className="group relative aspect-[4/3] overflow-hidden rounded-sm border border-[#1a1a1a] bg-black"
+                          >
+                            <img src={img.url} alt={img.name} className="h-full w-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                removeImage(img.id)
+                              }}
+                              className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-sm bg-black/80 text-[11px] text-white opacity-0 hover:bg-red-600 group-hover:opacity-100"
+                              title="Remove"
+                            >
+                              ✕
+                            </button>
+                            <div className="absolute inset-x-0 bottom-0 truncate bg-black/70 px-1.5 py-0.5 text-[10px] text-[#ccc]">
+                              {img.name}
+                            </div>
+                          </div>
+                        )
+                      }
+                      return (
+                        <div
+                          key={i}
+                          className="flex aspect-[4/3] flex-col items-center justify-center gap-1 rounded-sm border border-dashed border-[#2a2a2a] text-[11px] text-[#555]"
+                        >
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                            <rect x="3" y="3" width="18" height="18" rx="1" />
+                            <circle cx="8.5" cy="8.5" r="1.5" />
+                            <path d="m21 15-5-5L5 21" />
+                          </svg>
+                          <span>Slot {i + 1}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between text-[11px] text-[#555]">
+                    <span>Drag and drop image files, or click to browse</span>
+                    <span className="tabular-nums">
+                      {images.length} / 3
+                    </span>
+                  </div>
                 </div>
-              )}
-              {imageSlots.length >= 3 && (
-                <div className="flex flex-1 items-center justify-center">
-                  <span className="text-[10px] text-[#333]">3/3 images added</span>
-                </div>
-              )}
-            </div>
-          </div>
+              </Section>
 
-          <div className="flex min-h-[200px] flex-1 flex-col">
-            <div className="flex-shrink-0 px-4 pb-1.5 pt-3">
-              <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-[#444]">
-                3 · Story Outcome
-              </span>
+              <Divider />
+
+              <Section number={3} title="Story Outcome" status={outcome ? "done" : "pending"}>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {OPENING_OUTCOMES.map((o) => {
+                    const selected = outcome?.id === o.id
+                    return (
+                      <button
+                        key={o.id}
+                        type="button"
+                        onClick={() => setOutcome(o)}
+                        className={`flex items-start gap-3 rounded-sm border p-3 text-left transition-colors ${
+                          selected
+                            ? "border-cyan-600/50 bg-[#0e1620] ring-1 ring-cyan-500/15"
+                            : "border-[#1a1a1a] bg-[#131313] hover:border-[#2a2a2a] hover:bg-[#161616]"
+                        }`}
+                      >
+                        <div
+                          className={`mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border ${
+                            selected ? "border-cyan-400 bg-cyan-500" : "border-[#444]"
+                          }`}
+                        >
+                          {selected && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 text-[13px] font-medium text-[#e0e0e0]">
+                            <span>{o.emoji}</span>
+                            <span>{o.name}</span>
+                          </div>
+                          <div className="mt-0.5 text-[12px] leading-snug text-[#666]">{o.description}</div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </Section>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-4 pb-3">
-              {outcomes.map((o, oi) => {
-                const sel = selectedOutcomeIndex === oi
-                return (
-                  <button
-                    key={o.title}
-                    type="button"
-                    onClick={() => setSelectedOutcomeIndex(sel ? null : oi)}
-                    className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors duration-100 ${
-                      sel ? "bg-[#161616]" : "bg-transparent hover:bg-[#111]"
-                    }`}
-                  >
-                    <div
-                      className={`flex h-3 w-3 flex-shrink-0 items-center justify-center rounded-full border-[1.5px] ${
-                        sel ? "border-white" : "border-[#333]"
-                      }`}
-                    >
-                      {sel && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
+          </section>
+
+          <aside className="flex min-h-[280px] flex-col overflow-hidden rounded-sm border border-[#1a1a1a] bg-[#0a0a0a] lg:col-span-4">
+            <div className="flex h-9 flex-shrink-0 items-center border-b border-[#1a1a1a] bg-[#0e0e0e] px-3 text-[11px] font-medium uppercase tracking-wider">
+              <span className="text-[#e0e0e0]">Inspector</span>
+              <span className="ml-auto normal-case tracking-normal text-[#555]">{completion}/3 complete</span>
+            </div>
+
+            <div className="h-1 bg-[#1a1a1a]">
+              <div className="h-full bg-cyan-500 transition-all" style={{ width: `${(completion / 3) * 100}%` }} />
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
+              <InspectorBlock label="Archetype">
+                {showcase ? (
+                  <div>
+                    <div className="text-[13px] font-medium text-[#e0e0e0]">{showcase.name}</div>
+                    <div className={`mt-0.5 text-[10px] uppercase tracking-wider ${accentText[showcase.accent]}`}>
+                      {showcase.engine}
                     </div>
-                    <div>
-                      <div className={`text-[11px] font-semibold uppercase tracking-wide ${sel ? "text-white" : "text-[#888]"}`}>
-                        {o.title}
+                    <div className="mt-1.5 text-[11px] italic text-[#555]">{showcase.examples}</div>
+                  </div>
+                ) : (
+                  <Empty>No archetype selected</Empty>
+                )}
+              </InspectorBlock>
+
+              <InspectorBlock label={`Beat Structure ${showcase ? `(${showcase.beatList.length})` : ""}`}>
+                {showcase ? (
+                  <ol className="space-y-px">
+                    {showcase.beatList.map((b, i) => (
+                      <li
+                        key={`${b}-${i}`}
+                        className="flex h-6 items-center gap-2 rounded-sm px-2 text-[12px] text-[#aaa] hover:bg-white/[0.04]"
+                      >
+                        <span className="w-9 text-right tabular-nums text-[#555]">{String(i + 1).padStart(2, "0")}</span>
+                        <span className="text-[#444]">·</span>
+                        <span className="truncate">{b}</span>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <Empty>Beats will appear here</Empty>
+                )}
+              </InspectorBlock>
+
+              <InspectorBlock label={`References (${images.length})`}>
+                {images.length > 0 ? (
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {images.map((img) => (
+                      <div
+                        key={img.id}
+                        className="aspect-square overflow-hidden rounded-sm border border-[#1a1a1a] bg-black"
+                      >
+                        <img src={img.url} alt={img.name} className="h-full w-full object-cover" />
                       </div>
-                      <div className="mt-0.5 text-[10px] leading-tight text-[#444]">{o.desc}</div>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <Empty>No images attached</Empty>
+                )}
+              </InspectorBlock>
 
-      <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[#1a1a1a] px-5 py-2.5">
-        <div className="flex flex-wrap items-center gap-4 sm:gap-5">
-          {(
-            [
-              { label: "Archetype", done: selectedArchetypeIndex !== null },
-              { label: "Images", done: imageSlots.length > 0 },
-              { label: "Outcome", done: selectedOutcomeIndex !== null },
-            ] as const
-          ).map((s, i) => (
-            <div key={i} className="flex items-center gap-1.5">
-              {s.done ? (
-                <svg className="h-3 w-3 text-[#666]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              ) : (
-                <div className="h-1 w-1 rounded-full bg-[#333]" />
-              )}
-              <span className={`text-[11px] ${s.done ? "text-[#777]" : "text-[#333]"}`}>{s.label}</span>
+              <InspectorBlock label="Outcome">
+                {outcome ? (
+                  <div>
+                    <div className="text-[13px] font-medium text-[#e0e0e0]">
+                      {outcome.emoji} {outcome.name}
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-[#666]">{outcome.description}</div>
+                  </div>
+                ) : (
+                  <Empty>No outcome chosen</Empty>
+                )}
+              </InspectorBlock>
+
+              <InspectorBlock label="Validation">
+                <ul className="space-y-1 text-[12px]">
+                  <CheckRow ok={!!archetype} label="Archetype selected" />
+                  <CheckRow ok={images.length > 0} label="At least one reference image" />
+                  <CheckRow ok={!!outcome} label="Outcome chosen" />
+                </ul>
+              </InspectorBlock>
             </div>
-          ))}
+
+            <div className="flex flex-shrink-0 items-center gap-2 border-t border-[#1a1a1a] bg-[#0e0e0e] p-2">
+              <button
+                type="button"
+                onClick={resetForm}
+                className="h-8 rounded-sm border border-[#1a1a1a] bg-[#141414] px-3 text-[12px] text-[#ccc] hover:bg-[#1a1a1a]"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                disabled={!ready || isGenerating}
+                onClick={handleGenerate}
+                className={`h-8 flex-1 rounded-sm border text-[12px] font-medium transition-colors ${
+                  ready && !isGenerating
+                    ? "border-cyan-700 bg-cyan-600 text-[#0a0a0a] hover:bg-cyan-500"
+                    : "cursor-not-allowed border-[#1a1a1a] bg-[#141414] text-[#444]"
+                }`}
+              >
+                {ready ? "Generate Story →" : `Complete ${3 - completion} more step${3 - completion === 1 ? "" : "s"}`}
+              </button>
+            </div>
+          </aside>
         </div>
-        <button
-          type="button"
-          disabled={!allDone || isGenerating}
-          onClick={handleBegin}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-[11px] font-medium uppercase tracking-wide transition-colors ${
-            allDone && !isGenerating
-              ? "cursor-pointer bg-white text-black hover:bg-[#e0e0e0] active:bg-[#ccc]"
-              : "cursor-not-allowed bg-[#141414] text-[#333]"
+      </main>
+
+      <footer className="flex h-6 flex-shrink-0 items-center gap-4 border-t border-[#1a1a1a] bg-[#0e0e0e] px-3 text-[11px] text-[#555]">
+        <span className="flex items-center gap-1.5">
+          <span className={`inline-block h-1.5 w-1.5 rounded-full ${ready ? "bg-emerald-500" : "bg-amber-500"}`} />
+          {ready ? "Ready to generate" : "Awaiting input"}
+        </span>
+        <span>Archetype: {archetype?.name ?? "—"}</span>
+        <span>
+          Images: {images.length}/3
+        </span>
+        <span>Outcome: {outcome?.name ?? "—"}</span>
+        <span className="ml-auto">Storyception</span>
+      </footer>
+    </div>
+  )
+}
+
+function Section({
+  number,
+  title,
+  subtitle,
+  status,
+  children,
+}: {
+  number: number
+  title: string
+  subtitle?: string
+  status: "done" | "pending"
+  children: ReactNode
+}) {
+  return (
+    <div className="p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <div
+          className={`flex h-5 w-5 items-center justify-center rounded-sm text-[11px] font-medium ${
+            status === "done"
+              ? "bg-cyan-600 text-[#0a0a0a]"
+              : "border border-[#1a1a1a] bg-[#161616] text-[#666]"
           }`}
         >
-          <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-            <polygon points="5 3 19 12 5 21 5 3" />
-          </svg>
-          Begin Story
-        </button>
+          {status === "done" ? "✓" : number}
+        </div>
+        <h2 className="text-[13px] font-medium uppercase tracking-wide text-[#e0e0e0]">{title}</h2>
+        {subtitle && <span className="text-[11px] text-[#555]">{subtitle}</span>}
       </div>
+      {children}
     </div>
+  )
+}
+
+function Divider() {
+  return <div className="mx-4 h-px bg-[#1a1a1a]" />
+}
+
+function InspectorBlock({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="border-b border-[#1a1a1a]">
+      <div className="flex h-7 items-center bg-[#101010] px-3 text-[10px] font-medium uppercase tracking-wider text-[#666]">
+        {label}
+      </div>
+      <div className="p-3">{children}</div>
+    </div>
+  )
+}
+
+function Empty({ children }: { children: ReactNode }) {
+  return <div className="text-[12px] italic text-[#555]">{children}</div>
+}
+
+function CheckRow({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <li className="flex items-center gap-2 text-[#666]">
+      <span
+        className={`flex h-3.5 w-3.5 items-center justify-center rounded-sm border text-[9px] ${
+          ok ? "border-emerald-800 bg-emerald-600 text-white" : "border-[#333] bg-[#131313] text-transparent"
+        }`}
+      >
+        ✓
+      </span>
+      <span className={ok ? "text-[#ccc]" : ""}>{label}</span>
+    </li>
   )
 }
