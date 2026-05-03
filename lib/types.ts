@@ -38,6 +38,7 @@ export interface Archetype {
   subtitle: string
   example: string
   desc: string
+  category?: "narrative" | "music" | "commercial"
 }
 
 export interface Outcome {

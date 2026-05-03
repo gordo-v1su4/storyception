@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react"
 import { AnimatePresence } from "framer-motion"
 import { Header } from "@/components/storyception/header"
-import { SetupPanel } from "@/components/storyception/setup-panel"
+import { StoryOpeningPanel } from "@/components/storyception/story-opening-panel"
 import { StoryCanvas } from "@/components/storyception/story-canvas"
 import { FlowCanvas } from "@/components/storyception/flow-canvas"
 import { Timeline } from "@/components/storyception/timeline"
@@ -217,7 +217,7 @@ export default function StoryceptionPage() {
   return (
     <div className="h-screen w-screen flex flex-col bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
       <AnimatePresence>
-        {showModal && <SetupPanel onClose={() => setShowModal(false)} onGenerate={handleGenerate} />}
+        {showModal && <StoryOpeningPanel onClose={() => setShowModal(false)} onGenerate={handleGenerate} />}
       </AnimatePresence>
 
       <Header onNewStory={handleNewStory} viewMode={viewMode} onToggleView={() => setViewMode(v => v === "flow" ? "cards" : "flow")} />

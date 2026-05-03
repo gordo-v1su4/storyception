@@ -14,8 +14,22 @@ import {
   bulkCreateKeyframes,
   generateSessionId,
   generateBeatId,
-  generateKeyframeId
+  generateKeyframeId,
 } from '@/lib/nocodb'
+import {
+  HERO_JOURNEY_BEATS,
+  SAVE_THE_CAT_BEATS,
+  STORY_CIRCLE_BEATS,
+  THREE_ACT_BEATS,
+  SEVEN_POINT_BEATS,
+  LESTER_DENT_BEATS,
+  SONG_ARC_BEATS,
+  PERFORMANCE_MV_BEATS,
+  VISUAL_CONCEPT_MV_BEATS,
+  PROBLEM_SOLUTION_BEATS,
+  LIFESTYLE_SPOT_BEATS,
+  MINI_STORY_SPOT_BEATS,
+} from '@/lib/data'
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
@@ -223,60 +237,20 @@ async function updateBeatKeyframesJson(beatId: string, gridUrl: string | null, k
   })
 }
 
-// Beat structures by archetype
+// Beat structures by archetype (indices match `archetypes` in lib/data)
 const BEAT_STRUCTURES: Record<number, { id: string; label: string; desc: string }[]> = {
-  0: [ // Hero's Journey (12 beats)
-    { id: 'ordinaryWorld', label: '1. THE ORDINARY WORLD', desc: "The hero's normal life before adventure" },
-    { id: 'callToAdventure', label: '2. THE CALL TO ADVENTURE', desc: 'An inciting incident disrupts comfort' },
-    { id: 'refusal', label: '3. REFUSAL OF THE CALL', desc: 'The hero hesitates or resists' },
-    { id: 'meetingMentor', label: '4. MEETING THE MENTOR', desc: 'A guide offers wisdom or tools' },
-    { id: 'crossingThreshold', label: '5. CROSSING THE THRESHOLD', desc: 'Hero commits and enters the unknown' },
-    { id: 'testsAllies', label: '6. TESTS, ALLIES, ENEMIES', desc: 'Challenges, friends, and foes appear' },
-    { id: 'approach', label: '7. APPROACH TO THE CAVE', desc: 'Nearing the goal with rising danger' },
-    { id: 'ordeal', label: '8. THE ORDEAL', desc: 'Critical confrontation with deepest fears' },
-    { id: 'reward', label: '9. REWARD (SEIZING THE SWORD)', desc: 'Victory and earning the boon' },
-    { id: 'roadBack', label: '10. THE ROAD BACK', desc: 'Journey home begins but not over' },
-    { id: 'resurrection', label: '11. RESURRECTION', desc: 'Final climactic challenge' },
-    { id: 'returnElixir', label: '12. RETURN WITH THE ELIXIR', desc: 'Hero returns transformed' },
-  ],
-  1: [ // Save the Cat (15 beats)
-    { id: 'openingImage', label: '1. OPENING IMAGE', desc: 'Snapshot setting tone and protagonist' },
-    { id: 'setup', label: '2. SETUP', desc: 'World, relationships, and stakes established' },
-    { id: 'themeStated', label: '3. THEME STATED', desc: "Story's deeper message hinted" },
-    { id: 'catalyst', label: '4. CATALYST', desc: 'Inciting incident kicks story into motion' },
-    { id: 'debate', label: '5. DEBATE', desc: 'Protagonist hesitates or questions' },
-    { id: 'breakIntoTwo', label: '6. BREAK INTO TWO', desc: 'Hero commits to the goal, entering Act II' },
-    { id: 'bStory', label: '7. B STORY', desc: 'Subplot emerges (romance, friendship)' },
-    { id: 'funAndGames', label: '8. FUN AND GAMES', desc: 'Promise of premise explored' },
-    { id: 'midpoint', label: '9. MIDPOINT', desc: "Major twist changes story's trajectory" },
-    { id: 'badGuysCloseIn', label: '10. BAD GUYS CLOSE IN', desc: 'Tension ramps, obstacles surround' },
-    { id: 'allIsLost', label: '11. ALL IS LOST', desc: 'Crushing setback, deepest fears confronted' },
-    { id: 'darkNight', label: '12. DARK NIGHT OF THE SOUL', desc: 'Rock bottom, questioning everything' },
-    { id: 'breakIntoThree', label: '13. BREAK INTO THREE', desc: 'New insight sparks path forward' },
-    { id: 'finale', label: '14. FINALE', desc: 'Climax using everything learned' },
-    { id: 'finalImage', label: '15. FINAL IMAGE', desc: 'Closing snapshot showing transformation' },
-  ],
-  2: [ // Story Circle (8 beats)
-    { id: 'you', label: '1. YOU (ZONE OF COMFORT)', desc: 'Character in mundane everyday life' },
-    { id: 'need', label: '2. NEED (WANT SOMETHING)', desc: 'Core desire compels action' },
-    { id: 'go', label: '3. GO (ENTER UNFAMILIAR)', desc: 'Crosses threshold to pursue want' },
-    { id: 'search', label: '4. SEARCH (ADAPT)', desc: 'Acquires new skills to survive' },
-    { id: 'find', label: '5. FIND (GET WHAT THEY WANTED)', desc: 'Goal achieved at significant cost' },
-    { id: 'take', label: '6. TAKE (PAY HEAVY PRICE)', desc: 'Victory followed by losses' },
-    { id: 'return', label: '7. RETURN (FAMILIAR SITUATION)', desc: 'Goes back to where they started' },
-    { id: 'change', label: '8. CHANGE (HAVING CHANGED)', desc: 'Character has grown, lessons remain' },
-  ],
-  3: [ // Three-Act (9 beats)
-    { id: 'exposition', label: '1. EXPOSITION', desc: "Protagonist's ordinary world" },
-    { id: 'incitingIncident', label: '2. INCITING INCIDENT', desc: 'Event disrupts ordinary world' },
-    { id: 'plotPoint1', label: '3. PLOT POINT 1', desc: 'Commits to conflict, enters Act II' },
-    { id: 'risingAction', label: '4. RISING ACTION', desc: 'Escalating challenges, raised stakes' },
-    { id: 'midpoint', label: '5. MIDPOINT', desc: 'Major turning point' },
-    { id: 'plotPoint2', label: '6. PLOT POINT 2', desc: 'Major setback, questioning success' },
-    { id: 'preClimax', label: '7. PRE-CLIMAX', desc: 'Regroups for final confrontation' },
-    { id: 'climax', label: '8. CLIMAX', desc: 'Ultimate showdown, conflict resolved' },
-    { id: 'denouement', label: '9. DÉNOUEMENT', desc: 'Loose ends tied, new status quo' },
-  ],
+  0: HERO_JOURNEY_BEATS,
+  1: SAVE_THE_CAT_BEATS,
+  2: STORY_CIRCLE_BEATS,
+  3: THREE_ACT_BEATS,
+  4: SEVEN_POINT_BEATS,
+  5: LESTER_DENT_BEATS,
+  6: SONG_ARC_BEATS,
+  7: PERFORMANCE_MV_BEATS,
+  8: VISUAL_CONCEPT_MV_BEATS,
+  9: PROBLEM_SOLUTION_BEATS,
+  10: LIFESTYLE_SPOT_BEATS,
+  11: MINI_STORY_SPOT_BEATS,
 }
 
 export interface StoryGenerationRequest {
@@ -591,6 +565,14 @@ export async function GET() {
       { index: 1, name: 'Save the Cat', beats: 15 },
       { index: 2, name: 'Story Circle', beats: 8 },
       { index: 3, name: 'Three-Act', beats: 9 },
+      { index: 4, name: 'Seven-Point', beats: 7 },
+      { index: 5, name: 'Lester Dent', beats: 19 },
+      { index: 6, name: 'Song Arc', beats: 8 },
+      { index: 7, name: 'Performance MV', beats: 6 },
+      { index: 8, name: 'Visual Concept', beats: 7 },
+      { index: 9, name: 'Problem → Solution', beats: 6 },
+      { index: 10, name: 'Lifestyle', beats: 6 },
+      { index: 11, name: 'Mini-Story', beats: 7 },
     ],
     outcomes: ['Happy Ending', 'Tragedy', 'Redemption', 'Ambiguous'],
   })

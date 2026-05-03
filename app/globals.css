@@ -87,6 +87,11 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  ::selection {
+    background: rgb(255 255 255 / 0.12);
+    color: inherit;
+  }
 }
 
 /* Custom scrollbar */

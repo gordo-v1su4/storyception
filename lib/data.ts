@@ -6,31 +6,84 @@ export const archetypes: Archetype[] = [
     subtitle: "EPIC ENGINE",
     example: "Star Wars, Marvel",
     desc: "Mythic progression & world-building",
+    category: "narrative",
   },
   {
     title: "SAVE THE CAT",
     subtitle: "PACING ENGINE",
     example: "Pixar, Blockbusters",
     desc: "Structured beats for maximum engagement",
+    category: "narrative",
   },
   {
     title: "STORY CIRCLE",
     subtitle: "CHARACTER ENGINE",
     example: "Rick & Morty, Community",
     desc: "Cyclical change and return",
+    category: "narrative",
   },
-  { title: "THREE-ACT", subtitle: "BASE ENGINE", example: "Standard Cinema", desc: "Setup, confrontation, resolution" },
+  {
+    title: "THREE-ACT",
+    subtitle: "BASE ENGINE",
+    example: "Standard Cinema",
+    desc: "Setup, confrontation, resolution",
+    category: "narrative",
+  },
   {
     title: "SEVEN-POINT",
     subtitle: "MILESTONE ENGINE",
     example: "Discovery Writers",
     desc: "Key turning points without rigid outline",
+    category: "narrative",
   },
   {
     title: "LESTER DENT",
     subtitle: "PULP FICTION ENGINE",
     example: "Pulp Fiction, Thrillers",
     desc: "Systematic escalation of trouble",
+    category: "narrative",
+  },
+  {
+    title: "SONG ARC",
+    subtitle: "NARRATIVE MV",
+    example: "Story-led promos, cinematic lyrics",
+    desc: "Verse-chorus arc mapped to visual story beats",
+    category: "music",
+  },
+  {
+    title: "PERFORMANCE MV",
+    subtitle: "STAGE ENGINE",
+    example: "Live energy, tour films",
+    desc: "Artist, band, and crowd as the through-line",
+    category: "music",
+  },
+  {
+    title: "VISUAL CONCEPT",
+    subtitle: "ART FILM MV",
+    example: "Surreal, symbolic, high-concept",
+    desc: "Motif-driven visuals with an emotional peak",
+    category: "music",
+  },
+  {
+    title: "PROBLEM → SOLUTION",
+    subtitle: "CLASSIC SPOT",
+    example: "DTC, SaaS, household brands",
+    desc: "Agitate the pain, reveal the fix, drive action",
+    category: "commercial",
+  },
+  {
+    title: "LIFESTYLE",
+    subtitle: "ASPIRATION SPOT",
+    example: "Fashion, auto, beverage",
+    desc: "World-building, identity, product in context",
+    category: "commercial",
+  },
+  {
+    title: "MINI-STORY",
+    subtitle: "CHARACTER SPOT",
+    example: "Insurance, telecom, holiday",
+    desc: "Relatable setup, twist, brand-as-hero, lockup",
+    category: "commercial",
   },
 ]
 
@@ -329,6 +382,64 @@ export const LESTER_DENT_BEATS: BeatStructure[] = [
   { id: "deliverPunchline", label: "19. DELIVER THE PUNCHLINE", desc: "Conclude with a clever, snappy final line." },
 ]
 
+export const SONG_ARC_BEATS: BeatStructure[] = [
+  { id: "mvHook", label: "1. VISUAL HOOK", desc: "Striking opening motif or tableau that sets tone." },
+  { id: "verseOne", label: "2. VERSE — WORLD", desc: "Establish character, space, and emotional baseline." },
+  { id: "preChorus", label: "3. PRE-CHORUS — TENSION", desc: "Build anticipation toward the release." },
+  { id: "chorusOne", label: "4. CHORUS — RELEASE", desc: "Emotional and visual peak; core theme lands." },
+  { id: "verseTwo", label: "5. VERSE — DEEPEN", desc: "Contrast, complication, or new story information." },
+  { id: "bridge", label: "6. BRIDGE — SHIFT", desc: "Breakdown, tonal shift, or surreal turn." },
+  { id: "chorusFinale", label: "7. FINAL CHORUS", desc: "Climactic restatement at maximum intensity." },
+  { id: "outro", label: "8. OUTRO / TAG", desc: "Resolve image, linger, or return to motif." },
+]
+
+export const PERFORMANCE_MV_BEATS: BeatStructure[] = [
+  { id: "coldOpen", label: "1. COLD OPEN", desc: "Tease energy, rhythm, or crowd before the reveal." },
+  { id: "stageEstablish", label: "2. STAGE ESTABLISH", desc: "Introduce artist, band, and performance space." },
+  { id: "versePerformance", label: "3. INTIMATE PERFORMANCE", desc: "Closer shots, choreography, connection with camera." },
+  { id: "chorusPerformance", label: "4. FULL CHORUS / PEAK", desc: "Lights, crowd, full arrangement hits." },
+  { id: "soloPeak", label: "5. SOLO / VISUAL CLIMAX", desc: "Instrumental break, hero moment, or stunt." },
+  { id: "finaleLockup", label: "6. FINALE & LOCKUP", desc: "Final hit, hold, and brand or title card." },
+]
+
+export const VISUAL_CONCEPT_MV_BEATS: BeatStructure[] = [
+  { id: "motifOpen", label: "1. OPENING MOTIF", desc: "Symbolic or surreal image introduces the world." },
+  { id: "symbolIntro", label: "2. SYMBOL INTRODUCTION", desc: "Core visual metaphor established and repeated." },
+  { id: "variation", label: "3. ESCALATION / VARIATION", desc: "Motif evolves, fractures, or multiplies." },
+  { id: "midReveal", label: "4. MIDPOINT REVEAL", desc: "Hidden meaning or relationship surfaces." },
+  { id: "contrastSeq", label: "5. CONTRAST SEQUENCE", desc: "Juxtaposition, inversion, or opposing imagery." },
+  { id: "emotionalPeak", label: "6. EMOTIONAL PEAK", desc: "Highest intensity beat before release." },
+  { id: "resolvingImage", label: "7. RESOLVING IMAGE", desc: "Close on final symbol or quiet exhale." },
+]
+
+export const PROBLEM_SOLUTION_BEATS: BeatStructure[] = [
+  { id: "hookProblem", label: "1. HOOK — PROBLEM", desc: "Relatable pain or frustration in everyday context." },
+  { id: "agitate", label: "2. AGITATE", desc: "Stakes rise; problem feels urgent and personal." },
+  { id: "turn", label: "3. TURN — DISCOVERY", desc: "Introduction of the product or solution." },
+  { id: "demonstration", label: "4. DEMONSTRATION", desc: "Solution in action; clear before/after." },
+  { id: "proof", label: "5. PROOF & BENEFITS", desc: "Credibility, results, or emotional payoff." },
+  { id: "cta", label: "6. CTA & LOCKUP", desc: "Clear call to action and brand mnemonic." },
+]
+
+export const LIFESTYLE_SPOT_BEATS: BeatStructure[] = [
+  { id: "aspirationalOpen", label: "1. ASPIRATIONAL OPEN", desc: "Beautiful, desirable world or mood." },
+  { id: "tribeWorld", label: "2. WORLD & TRIBE", desc: "Community, aesthetics, and shared values." },
+  { id: "ritual", label: "3. RITUAL / DAY", desc: "Authentic moments where product fits naturally." },
+  { id: "productContext", label: "4. PRODUCT IN CONTEXT", desc: "Hero shot integrated into lifestyle fabric." },
+  { id: "emotionalPayoff", label: "5. EMOTIONAL PAYOFF", desc: "Feeling of belonging, confidence, or freedom." },
+  { id: "brandMoment", label: "6. BRAND MOMENT", desc: "Logo, signature color, or tagline lands." },
+]
+
+export const MINI_STORY_SPOT_BEATS: BeatStructure[] = [
+  { id: "relatableSetup", label: "1. RELATABLE SETUP", desc: "Character and everyday situation we recognize." },
+  { id: "incitingMoment", label: "2. INCITING MOMENT", desc: "Small crisis, desire, or awkward turn." },
+  { id: "complication", label: "3. COMPLICATION", desc: "Obstacle escalates with humor or tension." },
+  { id: "twist", label: "4. TWIST / REVEAL", desc: "Unexpected beat reframes the situation." },
+  { id: "brandHero", label: "5. BRAND AS HERO", desc: "Product resolves tension with charm or clarity." },
+  { id: "resolution", label: "6. RESOLUTION", desc: "Character wins relief, status, or connection." },
+  { id: "tagline", label: "7. TAGLINE / LOCKUP", desc: "Memorable line and brand end card." },
+]
+
 export const beatStructures = [
   HERO_JOURNEY_BEATS,
   SAVE_THE_CAT_BEATS,
@@ -336,4 +447,10 @@ export const beatStructures = [
   THREE_ACT_BEATS,
   SEVEN_POINT_BEATS,
   LESTER_DENT_BEATS,
+  SONG_ARC_BEATS,
+  PERFORMANCE_MV_BEATS,
+  VISUAL_CONCEPT_MV_BEATS,
+  PROBLEM_SOLUTION_BEATS,
+  LIFESTYLE_SPOT_BEATS,
+  MINI_STORY_SPOT_BEATS,
 ]
