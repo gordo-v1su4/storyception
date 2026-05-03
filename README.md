@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/readme-hero.webp" alt="Storyception — Story Configuration: narrative archetype grid (Save the Cat selected), reference image slots, and inspector sidebar" width="960" />
+</p>
+
 # Storyception UI redesign
 
 *Automatically synced with your [v0.app](https://v0.app) deployments*
