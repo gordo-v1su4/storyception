@@ -146,6 +146,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
           sessionId,
           beatId: beat.beatId || `beat-${beat.id}`,
           referenceImageUrl,
+          keyframePrompts: beat.keyframePrompts ?? [],
           beatLabel: beat.label,
           beatDescription: beat.desc || beat.generatedIdea || '',
           beatDuration: beat.duration,

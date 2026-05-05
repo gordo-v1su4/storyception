@@ -33,6 +33,11 @@ function whereEqString(column: string, value: string): string {
   return `(${colRef(column)},eq,'${esc}')`
 }
 
+/** v3 Data API expects `sort` as JSON array, not a bare column name */
+function v3Sort(field: string, direction: 'asc' | 'desc' = 'asc'): string {
+  return JSON.stringify([{ field, direction }])
+}
+
 function recordsPath(tableId: string) {
   return `/api/v3/data/${NOCODB_BASE_ID}/${tableId}/records`
 }
@@ -186,7 +191,7 @@ export async function createBeatV3(beat: {
 export async function getBeatsForSessionV3(sessionId: string): Promise<StoryBeatRecord[]> {
   const params = new URLSearchParams({
     where: whereEqString('session_id', sessionId),
-    sort: 'beat_index',
+    sort: v3Sort('beat_index'),
   })
   const rows = await fetchRecordsJson(TABLES.beats, params)
   return rows.map((r) => unwrapRecord<StoryBeatRecord>(r))
@@ -261,7 +266,7 @@ export async function createBranchV3(branch: {
 export async function getBranchesForBeatV3(beatId: string): Promise<BranchRecord[]> {
   const params = new URLSearchParams({
     where: whereEqString('beat_id', beatId),
-    sort: 'branch_index',
+    sort: v3Sort('branch_index'),
   })
   const rows = await fetchRecordsJson(TABLES.branches, params)
   return rows.map((r) => unwrapRecord<BranchRecord>(r))
@@ -324,7 +329,7 @@ export async function createKeyframeV3(keyframe: {
 export async function getKeyframesForBeatV3(beatId: string, branchId?: string): Promise<KeyframeRecord[]> {
   let where = whereEqString('beat_id', beatId)
   if (branchId) where += `~and${whereEqString('branch_id', branchId)}`
-  const params = new URLSearchParams({ where, sort: 'frame_index' })
+  const params = new URLSearchParams({ where, sort: v3Sort('frame_index') })
   const rows = await fetchRecordsJson(TABLES.keyframes, params)
   return rows.map((r) => unwrapRecord<KeyframeRecord>(r))
 }
