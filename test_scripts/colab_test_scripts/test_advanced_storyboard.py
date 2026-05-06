@@ -124,9 +124,9 @@ def generate():
 
     model = "gemini-3-pro-image-preview"
 
-    # HARD LIKENESS LOCK: Temperature 0.1 for maximum consistency
+   
     generate_content_config = types.GenerateContentConfig(
-        temperature=0.1, 
+        temperature=1, 
         top_p=0.95,
         max_output_tokens=32768,
         response_modalities=["TEXT", "IMAGE"],
