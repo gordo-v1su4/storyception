@@ -10,7 +10,7 @@ import {
   generateKeyframeId,
   getPersistenceMode,
 } from '@/lib/nocodb'
-import { beatStructures } from '@/lib/data'
+import { archetypes, beatStructures } from '@/lib/data'
 
 export async function POST(request: NextRequest) {
   try {
@@ -116,6 +116,7 @@ export async function POST(request: NextRequest) {
       storyId: sessionId,
       title: storyData.story_title,
       logline: storyData.story_logline,
+      storySeed: storyData.story_seed,
       beats: allBeats,
       persistenceBackend: getPersistenceMode(),
       ...(persisted ? {} : { persisted: false }),
@@ -133,6 +134,13 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     message: 'Story Generation API (Google ADK + Gemini)',
-    usage: 'POST with archetypeIndex, archetypeName, outcomeName'
+    usage: 'POST with archetypeIndex, archetypeName, outcomeName',
+    archetypes: archetypes.map((a, i) => ({
+      index: i,
+      name: a.title,
+      categoryId: a.categoryId,
+      beats: beatStructures[i]?.length ?? 0,
+    })),
+    outcomes: ['Happy Ending', 'Tragedy', 'Redemption', 'Ambiguous'],
   })
 }

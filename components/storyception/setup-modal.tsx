@@ -5,7 +5,7 @@ import type React from "react"
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { X, Check, Upload, Sparkles, ChevronRight, ChevronLeft, Plus } from "lucide-react"
-import { archetypes, outcomes, beatStructures } from "@/lib/data"
+import { archetypeCategories, archetypes, outcomes, beatStructures } from "@/lib/data"
 import type { StoryBeat } from "@/lib/types"
 import { getBeatPercentage, autoGenerateBeatIdea } from "@/lib/story-generator"
 
@@ -181,16 +181,29 @@ export function SetupModal({ onClose, onGenerate }: SetupModalProps) {
                 transition={{ duration: 0.2 }}
               >
                 <h3 className="text-xs font-bold text-muted-foreground mb-6 uppercase tracking-widest">
-                  Step 1: Select Narrative Archetype
+                  Step 1: Select structure
                 </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-2">
-                  {archetypes.map((arch, idx) => (
-                    <motion.div
-                      key={idx}
-                      whileHover={{ scale: 1.01 }}
-                      whileTap={{ scale: 0.99 }}
-                      onClick={() => setSelectedArch(idx)}
-                      className={`
+                <div className="space-y-8 max-h-[520px] overflow-y-auto pr-2">
+                  {archetypeCategories.map((cat) => {
+                    const items = archetypes
+                      .map((arch, idx) => ({ arch, idx }))
+                      .filter(({ arch }) => arch.categoryId === cat.id)
+                    return (
+                      <div key={cat.id}>
+                        <div className="mb-3">
+                          <h4 className="text-[10px] font-bold text-foreground uppercase tracking-widest">{cat.label}</h4>
+                          {cat.description ? (
+                            <p className="text-[10px] text-muted-foreground mt-0.5">{cat.description}</p>
+                          ) : null}
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {items.map(({ arch, idx }) => (
+                            <motion.div
+                              key={idx}
+                              whileHover={{ scale: 1.01 }}
+                              whileTap={{ scale: 0.99 }}
+                              onClick={() => setSelectedArch(idx)}
+                              className={`
                         relative p-4 rounded-lg border-2 cursor-pointer transition-all duration-150 group
                         ${
                           selectedArch === idx
@@ -198,29 +211,40 @@ export function SetupModal({ onClose, onGenerate }: SetupModalProps) {
                             : "border-border bg-card hover:border-primary/40"
                         }
                       `}
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <h4 className="text-sm font-bold text-foreground">{arch.title}</h4>
-                        <AnimatePresence>
-                          {selectedArch === idx && (
-                            <motion.div
-                              initial={{ scale: 0 }}
-                              animate={{ scale: 1 }}
-                              exit={{ scale: 0 }}
-                              transition={{ duration: 0.15 }}
                             >
-                              <Check size={16} className="text-primary" />
+                              <div className="flex justify-between items-start mb-2 gap-2">
+                                <h4 className="text-sm font-bold text-foreground leading-tight">{arch.title}</h4>
+                                <AnimatePresence>
+                                  {selectedArch === idx && (
+                                    <motion.div
+                                      initial={{ scale: 0 }}
+                                      animate={{ scale: 1 }}
+                                      exit={{ scale: 0 }}
+                                      transition={{ duration: 0.15 }}
+                                      className="shrink-0"
+                                    >
+                                      <Check size={16} className="text-primary" />
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </div>
+                              <p className="text-[10px] text-primary font-bold mb-2 tracking-wide">{arch.subtitle}</p>
+                              <div className="text-[11px] text-muted-foreground mb-2">{arch.desc}</div>
+                              <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-muted-foreground/70">
+                                <span className="italic flex items-center gap-1 min-w-0">
+                                  <span className="text-primary shrink-0">●</span>
+                                  <span className="truncate">{arch.example}</span>
+                                </span>
+                                <span className="font-mono text-muted-foreground shrink-0">
+                                  {beatStructures[idx]?.length ?? 0} beats
+                                </span>
+                              </div>
                             </motion.div>
-                          )}
-                        </AnimatePresence>
+                          ))}
+                        </div>
                       </div>
-                      <p className="text-[10px] text-primary font-bold mb-2 tracking-wide">{arch.subtitle}</p>
-                      <div className="text-[11px] text-muted-foreground mb-2">{arch.desc}</div>
-                      <div className="text-[10px] text-muted-foreground/70 italic flex items-center gap-1">
-                        <span className="text-primary">●</span> {arch.example}
-                      </div>
-                    </motion.div>
-                  ))}
+                    )
+                  })}
                 </div>
               </motion.div>
             )}

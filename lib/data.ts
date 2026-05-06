@@ -1,4 +1,10 @@
-import type { Archetype, Outcome, BeatStructure } from "./types"
+import type { Archetype, ArchetypeCategory, Outcome, BeatStructure } from "./types"
+
+export const archetypeCategories: ArchetypeCategory[] = [
+  { id: "film-tv", label: "Film & TV", description: "Classic screenplay and story engines" },
+  { id: "music-video", label: "Music videos", description: "Song-driven visual and performance arcs" },
+  { id: "commercial", label: "Commercials", description: "Short-form spots and brand stories" },
+]
 
 export const archetypes: Archetype[] = [
   {
@@ -6,84 +12,84 @@ export const archetypes: Archetype[] = [
     subtitle: "EPIC ENGINE",
     example: "Star Wars, Marvel",
     desc: "Mythic progression & world-building",
-    category: "narrative",
+    categoryId: "film-tv",
   },
   {
     title: "SAVE THE CAT",
     subtitle: "PACING ENGINE",
     example: "Pixar, Blockbusters",
     desc: "Structured beats for maximum engagement",
-    category: "narrative",
+    categoryId: "film-tv",
   },
   {
     title: "STORY CIRCLE",
     subtitle: "CHARACTER ENGINE",
     example: "Rick & Morty, Community",
     desc: "Cyclical change and return",
-    category: "narrative",
+    categoryId: "film-tv",
   },
   {
     title: "THREE-ACT",
     subtitle: "BASE ENGINE",
     example: "Standard Cinema",
     desc: "Setup, confrontation, resolution",
-    category: "narrative",
+    categoryId: "film-tv",
   },
   {
     title: "SEVEN-POINT",
     subtitle: "MILESTONE ENGINE",
     example: "Discovery Writers",
     desc: "Key turning points without rigid outline",
-    category: "narrative",
+    categoryId: "film-tv",
   },
   {
     title: "LESTER DENT",
     subtitle: "PULP FICTION ENGINE",
     example: "Pulp Fiction, Thrillers",
     desc: "Systematic escalation of trouble",
-    category: "narrative",
+    categoryId: "film-tv",
   },
   {
     title: "SONG ARC",
     subtitle: "NARRATIVE MV",
     example: "Story-led promos, cinematic lyrics",
     desc: "Verse-chorus arc mapped to visual story beats",
-    category: "music",
+    categoryId: "music-video",
   },
   {
     title: "PERFORMANCE MV",
     subtitle: "STAGE ENGINE",
     example: "Live energy, tour films",
     desc: "Artist, band, and crowd as the through-line",
-    category: "music",
+    categoryId: "music-video",
   },
   {
     title: "VISUAL CONCEPT",
     subtitle: "ART FILM MV",
     example: "Surreal, symbolic, high-concept",
     desc: "Motif-driven visuals with an emotional peak",
-    category: "music",
+    categoryId: "music-video",
   },
   {
     title: "PROBLEM → SOLUTION",
     subtitle: "CLASSIC SPOT",
     example: "DTC, SaaS, household brands",
     desc: "Agitate the pain, reveal the fix, drive action",
-    category: "commercial",
+    categoryId: "commercial",
   },
   {
     title: "LIFESTYLE",
     subtitle: "ASPIRATION SPOT",
     example: "Fashion, auto, beverage",
     desc: "World-building, identity, product in context",
-    category: "commercial",
+    categoryId: "commercial",
   },
   {
     title: "MINI-STORY",
     subtitle: "CHARACTER SPOT",
     example: "Insurance, telecom, holiday",
     desc: "Relatable setup, twist, brand-as-hero, lockup",
-    category: "commercial",
+    categoryId: "commercial",
   },
 ]
 
@@ -271,7 +277,7 @@ export const THREE_ACT_BEATS: BeatStructure[] = [
     desc: "The protagonist regroups and prepares for the final confrontation.",
   },
   { id: "climax", label: "8. CLIMAX", desc: "The ultimate showdown where the central conflict is finally resolved." },
-  { id: "denouement", label: "9. DÉNOUEMENT", desc: "Loose ends are tied up, and the new status quo is revealed." },
+  { id: "denouement", label: "9. D├ëNOUEMENT", desc: "Loose ends are tied up, and the new status quo is revealed." },
 ]
 
 export const SEVEN_POINT_BEATS: BeatStructure[] = [
@@ -384,11 +390,11 @@ export const LESTER_DENT_BEATS: BeatStructure[] = [
 
 export const SONG_ARC_BEATS: BeatStructure[] = [
   { id: "mvHook", label: "1. VISUAL HOOK", desc: "Striking opening motif or tableau that sets tone." },
-  { id: "verseOne", label: "2. VERSE — WORLD", desc: "Establish character, space, and emotional baseline." },
-  { id: "preChorus", label: "3. PRE-CHORUS — TENSION", desc: "Build anticipation toward the release." },
-  { id: "chorusOne", label: "4. CHORUS — RELEASE", desc: "Emotional and visual peak; core theme lands." },
-  { id: "verseTwo", label: "5. VERSE — DEEPEN", desc: "Contrast, complication, or new story information." },
-  { id: "bridge", label: "6. BRIDGE — SHIFT", desc: "Breakdown, tonal shift, or surreal turn." },
+  { id: "verseOne", label: "2. VERSE ΓÇö WORLD", desc: "Establish character, space, and emotional baseline." },
+  { id: "preChorus", label: "3. PRE-CHORUS ΓÇö TENSION", desc: "Build anticipation toward the release." },
+  { id: "chorusOne", label: "4. CHORUS ΓÇö RELEASE", desc: "Emotional and visual peak; core theme lands." },
+  { id: "verseTwo", label: "5. VERSE ΓÇö DEEPEN", desc: "Contrast, complication, or new story information." },
+  { id: "bridge", label: "6. BRIDGE ΓÇö SHIFT", desc: "Breakdown, tonal shift, or surreal turn." },
   { id: "chorusFinale", label: "7. FINAL CHORUS", desc: "Climactic restatement at maximum intensity." },
   { id: "outro", label: "8. OUTRO / TAG", desc: "Resolve image, linger, or return to motif." },
 ]
@@ -413,9 +419,9 @@ export const VISUAL_CONCEPT_MV_BEATS: BeatStructure[] = [
 ]
 
 export const PROBLEM_SOLUTION_BEATS: BeatStructure[] = [
-  { id: "hookProblem", label: "1. HOOK — PROBLEM", desc: "Relatable pain or frustration in everyday context." },
+  { id: "hookProblem", label: "1. HOOK ΓÇö PROBLEM", desc: "Relatable pain or frustration in everyday context." },
   { id: "agitate", label: "2. AGITATE", desc: "Stakes rise; problem feels urgent and personal." },
-  { id: "turn", label: "3. TURN — DISCOVERY", desc: "Introduction of the product or solution." },
+  { id: "turn", label: "3. TURN ΓÇö DISCOVERY", desc: "Introduction of the product or solution." },
   { id: "demonstration", label: "4. DEMONSTRATION", desc: "Solution in action; clear before/after." },
   { id: "proof", label: "5. PROOF & BENEFITS", desc: "Credibility, results, or emotional payoff." },
   { id: "cta", label: "6. CTA & LOCKUP", desc: "Clear call to action and brand mnemonic." },

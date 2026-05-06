@@ -113,6 +113,70 @@ export const LESTER_DENT_WEIGHTS: Record<string, BeatWeight> = {
   deliverPunchline: { beatId: "deliverPunchline", weight: 0.0, isLoopable: false, notes: "Closing line" },
 }
 
+// Music video — song arc (8 beats)
+export const MV_SONG_ARC_WEIGHTS: Record<string, BeatWeight> = {
+  introHook: { beatId: "introHook", weight: 0.0, isLoopable: false, notes: "Establish hook" },
+  verseOne: { beatId: "verseOne", weight: 0.5, isLoopable: false, notes: "Narrative paths" },
+  preChorus: { beatId: "preChorus", weight: 0.6, isLoopable: false, notes: "Build variations" },
+  chorusOne: { beatId: "chorusOne", weight: 0.7, isLoopable: false, notes: "Peak options" },
+  verseTwo: { beatId: "verseTwo", weight: 0.8, isLoopable: true, notes: "LOOPABLE — verse exploration" },
+  bridge: { beatId: "bridge", weight: 0.7, isLoopable: false, notes: "Contrast beats" },
+  finalChorus: { beatId: "finalChorus", weight: 0.5, isLoopable: false, notes: "Final peak" },
+  outro: { beatId: "outro", weight: 0.0, isLoopable: false, notes: "Tag / resolve" },
+}
+
+// Music video — performance (6 beats)
+export const MV_PERFORMANCE_WEIGHTS: Record<string, BeatWeight> = {
+  stageOpen: { beatId: "stageOpen", weight: 0.0, isLoopable: false, notes: "Venue lock" },
+  artistPresence: { beatId: "artistPresence", weight: 0.4, isLoopable: false, notes: "Presence beats" },
+  energyBuild: { beatId: "energyBuild", weight: 0.8, isLoopable: true, notes: "LOOPABLE — build sections" },
+  peakPerformance: { beatId: "peakPerformance", weight: 0.7, isLoopable: false, notes: "Climax variants" },
+  crowdConnection: { beatId: "crowdConnection", weight: 0.6, isLoopable: false, notes: "Crowd / intimacy" },
+  closingSting: { beatId: "closingSting", weight: 0.0, isLoopable: false, notes: "Final sting" },
+}
+
+// Music video — visual concept (7 beats)
+export const MV_CONCEPT_WEIGHTS: Record<string, BeatWeight> = {
+  motifEstablish: { beatId: "motifEstablish", weight: 0.0, isLoopable: false, notes: "Motif lock" },
+  worldRules: { beatId: "worldRules", weight: 0.5, isLoopable: false, notes: "World logic" },
+  tensionVisual: { beatId: "tensionVisual", weight: 0.7, isLoopable: true, notes: "LOOPABLE — tension passes" },
+  surrealBreak: { beatId: "surrealBreak", weight: 0.8, isLoopable: false, notes: "Surreal forks" },
+  emotionalPeak: { beatId: "emotionalPeak", weight: 0.6, isLoopable: false, notes: "Peak emotion" },
+  resolveVisual: { beatId: "resolveVisual", weight: 0.4, isLoopable: false, notes: "Resolve paths" },
+  endTag: { beatId: "endTag", weight: 0.0, isLoopable: false, notes: "End card" },
+}
+
+// Commercial — problem / solution (6 beats)
+export const COMMERCIAL_PS_WEIGHTS: Record<string, BeatWeight> = {
+  problemFrame: { beatId: "problemFrame", weight: 0.3, isLoopable: false, notes: "Problem tone" },
+  agitateStakes: { beatId: "agitateStakes", weight: 0.6, isLoopable: false, notes: "Agitation paths" },
+  productReveal: { beatId: "productReveal", weight: 0.5, isLoopable: false, notes: "Reveal style" },
+  demoProof: { beatId: "demoProof", weight: 0.7, isLoopable: true, notes: "LOOPABLE — demo angles" },
+  benefitMoment: { beatId: "benefitMoment", weight: 0.5, isLoopable: false, notes: "Benefit beat" },
+  callToAction: { beatId: "callToAction", weight: 0.0, isLoopable: false, notes: "CTA lock" },
+}
+
+// Commercial — lifestyle (6 beats)
+export const COMMERCIAL_LIFESTYLE_WEIGHTS: Record<string, BeatWeight> = {
+  aspirationWorld: { beatId: "aspirationWorld", weight: 0.0, isLoopable: false, notes: "World lock" },
+  desireGap: { beatId: "desireGap", weight: 0.5, isLoopable: false, notes: "Desire angles" },
+  productInScene: { beatId: "productInScene", weight: 0.6, isLoopable: false, notes: "Placement variants" },
+  lifestylePayoff: { beatId: "lifestylePayoff", weight: 0.7, isLoopable: false, notes: "Payoff tone" },
+  socialProof: { beatId: "socialProof", weight: 0.5, isLoopable: true, notes: "LOOPABLE — proof beats" },
+  brandLockup: { beatId: "brandLockup", weight: 0.0, isLoopable: false, notes: "Lockup" },
+}
+
+// Commercial — mini-story (7 beats)
+export const COMMERCIAL_MINI_STORY_WEIGHTS: Record<string, BeatWeight> = {
+  relateSetup: { beatId: "relateSetup", weight: 0.0, isLoopable: false, notes: "Setup lock" },
+  sparkMoment: { beatId: "sparkMoment", weight: 0.6, isLoopable: false, notes: "Spark variants" },
+  obstacleBeat: { beatId: "obstacleBeat", weight: 0.8, isLoopable: true, notes: "LOOPABLE — comic/tension beats" },
+  brandPivot: { beatId: "brandPivot", weight: 0.5, isLoopable: false, notes: "Pivot style" },
+  resolutionBeat: { beatId: "resolutionBeat", weight: 0.5, isLoopable: false, notes: "Resolution" },
+  emotionalButton: { beatId: "emotionalButton", weight: 0.4, isLoopable: false, notes: "Button joke/heart" },
+  superLogo: { beatId: "superLogo", weight: 0.0, isLoopable: false, notes: "Legal close" },
+}
+
 // Combined lookup by archetype index
 export const BEAT_WEIGHTS_BY_ARCHETYPE = [
   HERO_JOURNEY_WEIGHTS,
@@ -121,6 +185,12 @@ export const BEAT_WEIGHTS_BY_ARCHETYPE = [
   THREE_ACT_WEIGHTS,
   SEVEN_POINT_WEIGHTS,
   LESTER_DENT_WEIGHTS,
+  MV_SONG_ARC_WEIGHTS,
+  MV_PERFORMANCE_WEIGHTS,
+  MV_CONCEPT_WEIGHTS,
+  COMMERCIAL_PS_WEIGHTS,
+  COMMERCIAL_LIFESTYLE_WEIGHTS,
+  COMMERCIAL_MINI_STORY_WEIGHTS,
 ]
 
 /**

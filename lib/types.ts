@@ -33,12 +33,20 @@ export interface TimelineClip {
   width: number
 }
 
+export type ArchetypeCategoryId = 'film-tv' | 'music-video' | 'commercial'
+
+export interface ArchetypeCategory {
+  id: ArchetypeCategoryId
+  label: string
+  description?: string
+}
+
 export interface Archetype {
   title: string
   subtitle: string
   example: string
   desc: string
-  category?: "narrative" | "music" | "commercial"
+  categoryId: ArchetypeCategoryId
 }
 
 export interface Outcome {

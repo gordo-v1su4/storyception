@@ -4,7 +4,7 @@ import type React from "react"
 import { useState, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { X, Check, Upload, Sparkles, Plus, ImageIcon, Clapperboard } from "lucide-react"
-import { archetypes, outcomes, beatStructures } from "@/lib/data"
+import { archetypeCategories, archetypes, outcomes, beatStructures } from "@/lib/data"
 import type { StoryBeat } from "@/lib/types"
 import { getBeatPercentage, autoGenerateBeatIdea } from "@/lib/story-generator"
 
@@ -234,45 +234,66 @@ export function SetupPanel({ onClose, onGenerate }: SetupPanelProps) {
                 )}
               </div>
               
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {archetypes.map((arch, idx) => (
-                  <motion.button
-                    key={idx}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setSelectedArch(idx)}
-                    className={`
+              <div className="space-y-6">
+                {archetypeCategories.map((cat) => {
+                  const items = archetypes
+                    .map((arch, idx) => ({ arch, idx }))
+                    .filter(({ arch }) => arch.categoryId === cat.id)
+                  return (
+                    <div key={cat.id}>
+                      <div className="mb-2">
+                        <p className="text-[10px] font-bold text-zinc-300 uppercase tracking-widest">{cat.label}</p>
+                        {cat.description ? (
+                          <p className="text-[10px] text-zinc-600 mt-0.5">{cat.description}</p>
+                        ) : null}
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {items.map(({ arch, idx }) => (
+                          <motion.button
+                            key={idx}
+                            type="button"
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => setSelectedArch(idx)}
+                            className={`
                       relative p-4 rounded-xl border-2 text-left transition-all duration-150
                       ${selectedArch === idx
                         ? "border-cyan-500 bg-cyan-500/10 shadow-lg shadow-cyan-500/10"
                         : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 hover:bg-zinc-900"
                       }
                     `}
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <h4 className="text-xs font-bold text-zinc-200 leading-tight">{arch.title}</h4>
-                      <AnimatePresence>
-                        {selectedArch === idx && (
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            exit={{ scale: 0 }}
                           >
-                            <div className="w-4 h-4 rounded-full bg-cyan-500 flex items-center justify-center">
-                              <Check size={10} className="text-zinc-950" />
+                            <div className="flex justify-between items-start mb-2 gap-1">
+                              <h4 className="text-xs font-bold text-zinc-200 leading-tight">{arch.title}</h4>
+                              <AnimatePresence>
+                                {selectedArch === idx && (
+                                  <motion.div
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1 }}
+                                    exit={{ scale: 0 }}
+                                    className="shrink-0"
+                                  >
+                                    <div className="w-4 h-4 rounded-full bg-cyan-500 flex items-center justify-center">
+                                      <Check size={10} className="text-zinc-950" />
+                                    </div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
                             </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                            <p className="text-[9px] text-cyan-400 font-bold mb-1.5 tracking-wide">{arch.subtitle}</p>
+                            <p className="text-[10px] text-zinc-500 mb-2 line-clamp-2">{arch.desc}</p>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[9px] text-zinc-600 italic truncate">{arch.example}</span>
+                              <span className="text-[9px] text-zinc-600 font-mono shrink-0">
+                                {beatStructures[idx]?.length ?? 0} beats
+                              </span>
+                            </div>
+                          </motion.button>
+                        ))}
+                      </div>
                     </div>
-                    <p className="text-[9px] text-cyan-400 font-bold mb-1.5 tracking-wide">{arch.subtitle}</p>
-                    <p className="text-[10px] text-zinc-500 mb-2 line-clamp-2">{arch.desc}</p>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[9px] text-zinc-600 italic">{arch.example}</span>
-                      <span className="text-[9px] text-zinc-600 font-mono">{beatStructures[idx].length} beats</span>
-                    </div>
-                  </motion.button>
-                ))}
+                  )
+                })}
               </div>
             </div>
 
