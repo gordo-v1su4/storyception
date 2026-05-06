@@ -10,7 +10,7 @@ Quick reference for Gemini 3 model IDs, multimodal `media_resolution`, Python sn
 |--------|----------------|--------|
 | Gemini 3.1 Pro Preview | `gemini-3.1-pro-preview` | Multimodal + streaming (see capabilities below). |
 | Gemini 3 Flash Preview | `gemini-3-flash-preview` | Available **only** on **`global`** endpoints. |
-| Nano Banana Pro (image generation) | `gemini-3-pro-image-preview` | Use this model ID for Nano Banana Pro image gen. |
+| Nano Banana Pro / image generation | `gemini-3-pro-image-preview` | Use for **images** (image-gen endpoints / Nano Banana Pro–style flows). |
 
 ### Gemini 3.1 Pro Preview — capabilities
 
