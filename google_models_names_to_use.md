@@ -138,11 +138,21 @@ print(response.text)
 
 ## TypeScript / JavaScript SDK
 
-- **Docs:** [Google Gen AI SDK for JavaScript/TypeScript](https://googleapis.github.io/js-genai/)  
-- Supports **Gemini Developer API** and **Gemini Enterprise Agent Platform** (per Google’s SDK description).
+- **Docs:** [Google Gen AI SDK for JavaScript/TypeScript](https://googleapis.github.io/js-genai/) — single client for **Gemini Developer API** (AI Studio key) and **Vertex / Gemini Enterprise**-style routing (`vertexai: true`, with `project` + `location` for ADC, or a key for Express). Google is consolidating branding away from legacy `@google-cloud/vertexai` toward this SDK.
+- **Storyception auth (2026):** Vertex + Application Default Credentials. Set `GOOGLE_GENAI_USE_VERTEXAI=true`, `GOOGLE_GENAI_VERTEX_USE_GCP_PROJECT=1`, `GOOGLE_CLOUD_PROJECT=<project>`, `GOOGLE_CLOUD_LOCATION=global`, then run `gcloud auth application-default login`. See `GOOGLE_AUTH_AND_PIPELINE_NOTES_2026-05-14.md` for why API-key auth no longer works against Vertex's `PredictionService.generateContent`.
 
 ---
 
 ## Packages to avoid
 
 - **`@google-cloud/vertexai`** — **Do not use** for new work; **deprecated May 2026** (prefer the current Gen AI SDK stack aligned with your deployment path).
+
+---
+
+## Storyception (this repo)
+
+- **Canonical model IDs in TypeScript:** `lib/gemini-models.ts`
+- **Auth, today's revelations, and the full debug log:** `GOOGLE_AUTH_AND_PIPELINE_NOTES_2026-05-14.md`
+- **Colab examples** (reference images, 3×3 grids, `google-genai` + `types`): `test_scripts/colab_test_scripts/`
+  All Python scripts now use ADC (`vertexai=True, project=…, location=…`) — the older `api_key=` pattern has been removed because it's rejected by Vertex in 2026.
+- **Quota note:** `gemini-3.1-pro-preview` currently returns `429 RESOURCE_EXHAUSTED` on most calls. The app defaults to `gemini-3-flash-preview` (`STORY_WORKFLOW_NARRATIVE_MODEL=flash`) until preview quota opens up.

@@ -7,22 +7,23 @@
  * Called when the user selects a branch and the next beat is a skeleton.
  */
 
+import { createPartFromText, createUserContent } from '@google/genai'
 import { NextRequest, NextResponse } from 'next/server'
 import {
   updateBeat,
   bulkCreateKeyframes,
   generateKeyframeId,
 } from '@/lib/nocodb'
-
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
+import { createGeminiClient } from '@/lib/gemini-client'
+import { GEMINI_MODEL_PRO } from '@/lib/gemini-models'
+import { getGeminiApiKey } from '@/lib/gemini-api-key'
 
 export interface ProgressiveBeatRequest {
   sessionId: string
   beatId: string
   beatIndex: number
   beatLabel: string
-  beatStructureDesc: string      // Archetype's static description (e.g. "Core desire compels action")
+  beatStructureDesc: string
   archetypeName: string
   outcomeName: string
   storyTitle: string
@@ -50,11 +51,14 @@ export interface ProgressiveBeatResponse {
 
 export async function POST(request: NextRequest) {
   try {
-    const timeoutMs = Number.parseInt(process.env.ANTHROPIC_TIMEOUT_MS ?? '', 10) || 45000
+    const timeoutMs = Number.parseInt(process.env.GEMINI_TIMEOUT_MS ?? '', 10) || 45000
     const body: ProgressiveBeatRequest = await request.json()
 
-    if (!ANTHROPIC_API_KEY) {
-      return NextResponse.json({ success: false, error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
+    if (!getGeminiApiKey()) {
+      return NextResponse.json(
+        { success: false, error: 'Gemini API key not configured' },
+        { status: 500 }
+      )
     }
 
     const {
@@ -63,7 +67,6 @@ export async function POST(request: NextRequest) {
       selectedBranch, previousBeats,
     } = body
 
-    // Build story context from previous beats (same pattern as /api/story/branches)
     const storyContext = previousBeats.map((b, i) => {
       let line = `  Beat ${i + 1}: ${b.label} - ${b.description}`
       if (b.selectedBranch) line += ` [Player chose: ${b.selectedBranch}]`
@@ -113,47 +116,50 @@ RESPOND IN THIS EXACT JSON FORMAT:
 
 Generate the beat now.`
 
-    const signal = AbortSignal.timeout(timeoutMs)
-    let anthropicResp: Response
+    const abortSignal = AbortSignal.timeout(timeoutMs)
+    const ai = createGeminiClient()
+
+    let textContent: string
     try {
-      anthropicResp = await fetch(ANTHROPIC_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 2048,
-          system: 'You are an expert screenwriter. Always respond with valid JSON only, no markdown or extra text.',
-          messages: [{ role: 'user', content: prompt }],
+      const res = await ai.models.generateContent({
+        model: GEMINI_MODEL_PRO,
+        contents: createUserContent(createPartFromText(prompt)),
+        config: {
+          abortSignal,
           temperature: 0.85,
-        }),
-        signal,
+          maxOutputTokens: 2048,
+          responseMimeType: 'application/json',
+          systemInstruction: createUserContent(
+            createPartFromText(
+              'You are an expert screenwriter. Always respond with valid JSON only, no markdown or extra text.'
+            )
+          ),
+        },
       })
+      textContent = (res.text ?? '').trim()
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
+      const timedOut =
+        err instanceof DOMException
+          ? err.name === 'TimeoutError' || err.name === 'AbortError'
+          : err instanceof Error &&
+            (err.name === 'TimeoutError' ||
+              err.name === 'AbortError' ||
+              err.message?.includes('timeout') ||
+              err.message?.includes('aborted'))
+      if (timedOut) {
         return NextResponse.json(
-          { success: false, error: `Anthropic API timed out after ${timeoutMs / 1000}s` },
+          { success: false, error: `Gemini API timed out after ${timeoutMs / 1000}s` },
           { status: 504 }
         )
       }
       throw err
     }
 
-    if (!anthropicResp.ok) {
-      const errorText = await anthropicResp.text()
-      console.error('Anthropic API error:', anthropicResp.status, errorText.substring(0, 300))
-      return NextResponse.json({ success: false, error: 'Anthropic API error' }, { status: 502 })
-    }
-
-    const anthropicData = await anthropicResp.json()
-    const textContent =
-      typeof anthropicData?.content?.[0]?.text === 'string' ? anthropicData.content[0].text : ''
-
-    if (!textContent || !textContent.trim()) {
-      return NextResponse.json({ success: false, error: 'Anthropic returned no text content' }, { status: 502 })
+    if (!textContent) {
+      return NextResponse.json(
+        { success: false, error: 'Gemini returned no text content' },
+        { status: 502 }
+      )
     }
 
     let beatData: { scene_description: string; duration_seconds: number; keyframe_prompts: string[] }
@@ -163,7 +169,7 @@ Generate the beat now.`
       const jsonMatch = textContent.match(/```json\n?([\s\S]*?)\n?```/)
       if (jsonMatch) {
         try {
-          beatData = JSON.parse(jsonMatch[1])
+          beatData = JSON.parse(jsonMatch[1]!)
         } catch {
           console.error('Failed to parse fenced progressive beat response:', textContent.substring(0, 300))
           return NextResponse.json({ success: false, error: 'Failed to parse beat response JSON' }, { status: 500 })
@@ -178,7 +184,6 @@ Generate the beat now.`
     const durationSeconds = beatData.duration_seconds || 6
     const keyframePrompts = (beatData.keyframe_prompts || []).slice(0, 9)
 
-    // Save to NocoDB: update the skeleton beat with real content
     try {
       await updateBeat(beatId, {
         description: sceneDescription,
@@ -186,7 +191,6 @@ Generate the beat now.`
         status: 'pending',
       })
 
-      // Create keyframe records with prompts (9 per beat)
       if (keyframePrompts.length > 0) {
         const keyframes = keyframePrompts.map((kfPrompt: string, idx: number) => ({
           keyframeId: generateKeyframeId(beatId, null, idx + 1),

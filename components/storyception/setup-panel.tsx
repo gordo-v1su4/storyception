@@ -45,7 +45,7 @@ export function SetupPanel({ onClose, onGenerate }: SetupPanelProps) {
     setError(null)
 
     try {
-      // Upload reference images to Nextcloud first
+      // Upload reference images to the shared media API first
       const formData = new FormData()
       uploadedImages.forEach((img) => formData.append("images", img.file))
 
@@ -61,6 +61,7 @@ export function SetupPanel({ onClose, onGenerate }: SetupPanelProps) {
       }
 
       const uploadedUrls: string[] = uploadData.urls || []
+      const uploadedAssets = uploadData.assets || []
 
       // Call the story generation API with uploaded URLs
       const response = await fetch('/api/story/generate', {
@@ -71,6 +72,7 @@ export function SetupPanel({ onClose, onGenerate }: SetupPanelProps) {
           archetypeName: archetypes[selectedArch!].title,
           outcomeName: outcomes[selectedOutcome!].title,
           referenceImages: uploadedUrls,
+          referenceAssets: uploadedAssets,
           totalDuration: 90,
         }),
       })

@@ -149,6 +149,7 @@ export function StoryOpeningPanel({ onClose, onGenerate }: StoryOpeningPanelProp
         throw new Error(uploadData.error || "Image upload failed")
       }
       const uploadedUrls: string[] = uploadData.urls || []
+      const uploadedAssets = uploadData.assets || []
 
       const arch = archetypes[apiIndex]
       const out = outcomes[outIdx]
@@ -161,6 +162,7 @@ export function StoryOpeningPanel({ onClose, onGenerate }: StoryOpeningPanelProp
           archetypeName: arch.title,
           outcomeName: out.title,
           referenceImages: uploadedUrls,
+          referenceAssets: uploadedAssets,
           totalDuration: 90,
         }),
       })

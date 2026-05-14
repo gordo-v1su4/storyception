@@ -337,7 +337,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
           onSelect: () => onSelectBeat(beat.id),
           onToggleBranch: () => {
             if (!beat.branches || beat.branches.length === 0) {
-              // Generate branches on-demand via Claude API
+              // Generate branches on-demand via Gemini (see /api/story/branches)
               if (sessionId) {
                 const prevBeats = beats.slice(0, idx).map(b => ({
                   label: b.label,

@@ -76,6 +76,6 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   return NextResponse.json({
-    message: 'Branch Generation API (Google ADK + Gemini)'
+    message: 'Branch Generation API (@google/genai structured output)'
   })
 }

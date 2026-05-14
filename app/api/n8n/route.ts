@@ -1,16 +1,13 @@
 /**
  * N8N API Integration Routes
- * 
- * Connects to n8n.v1su4.dev for:
- * - Story generation (Google Gemini)
- * - Image generation (Google Imagen 3 - primary)
- * 
- * Pipeline:
- * 1. User uploads reference image → Imagen 3 creates storyboard
- * 2. OR: Imagen 3 creates base → Imagen 3 creates storyboard
- * 
- * NO fal.ai - all image work via Google Imagen 3
- * 
+ *
+ * Connects to n8n for optional orchestration. Storyception’s first-party APIs use
+ * Gemini Developer API (`@google/genai`): `gemini-3.1-pro-preview` (text),
+ * `gemini-3-flash-preview` (optional fast text), `gemini-3-pro-image-preview` (native images).
+ *
+ * Legacy n8n workflows may still reference other generators — prefer aligning them with the
+ * same three Gemini models for a Google-only stack.
+ *
  * API Reference: https://docs.n8n.io/api/api-reference/
  */
 

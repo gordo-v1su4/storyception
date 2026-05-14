@@ -7,6 +7,7 @@ import path from 'path'
 
 import type {
   BranchRecord,
+  CharacterRecord,
   KeyframeRecord,
   StoryBeatRecord,
   StorySession,
@@ -23,6 +24,7 @@ type StoreShape = {
   beats: Record<string, StoryBeatRecord>
   branches: Record<string, BranchRecord>
   keyframes: Record<string, KeyframeRecord>
+  characters: Record<string, CharacterRecord>
 }
 
 let writeChain: Promise<unknown> = Promise.resolve()
@@ -44,10 +46,18 @@ async function load(): Promise<StoreShape> {
     if (!data.beats) data.beats = {}
     if (!data.branches) data.branches = {}
     if (!data.keyframes) data.keyframes = {}
+    if (!data.characters) data.characters = {}
     if (typeof data.nextId !== 'number') data.nextId = 1
     return data
   } catch {
-    return { nextId: 1, sessions: {}, beats: {}, branches: {}, keyframes: {} }
+    return {
+      nextId: 1,
+      sessions: {},
+      beats: {},
+      branches: {},
+      keyframes: {},
+      characters: {},
+    }
   }
 }
 
@@ -68,6 +78,9 @@ export async function createSessionLocal(session: {
   archetype: string
   outcome: string
   referenceImageUrl?: string
+  referenceImageBucket?: string
+  referenceImageObjectKey?: string
+  referenceStorageProvider?: string
   totalBeats?: number
 }): Promise<StorySession> {
   return serialize(async () => {
@@ -79,6 +92,9 @@ export async function createSessionLocal(session: {
       archetype: session.archetype,
       outcome: session.outcome,
       reference_image_url: referenceImageUrlForPersistence(session.referenceImageUrl),
+      reference_image_bucket: session.referenceImageBucket ?? null,
+      reference_image_object_key: session.referenceImageObjectKey ?? null,
+      reference_storage_provider: session.referenceStorageProvider ?? null,
       status: 'active',
       current_beat: 1,
       total_beats: session.totalBeats || 15,
@@ -237,6 +253,9 @@ export async function createKeyframeLocal(keyframe: {
   col: number
   prompt: string
   imageUrl?: string
+  storageBucket?: string
+  objectKey?: string
+  storageProvider?: string
 }): Promise<KeyframeRecord> {
   return serialize(async () => {
     const data = await load()
@@ -250,6 +269,9 @@ export async function createKeyframeLocal(keyframe: {
       grid_col: keyframe.col,
       prompt: keyframe.prompt,
       image_url: keyframe.imageUrl || '',
+      storage_bucket: keyframe.storageBucket ?? null,
+      object_key: keyframe.objectKey ?? null,
+      storage_provider: keyframe.storageProvider ?? null,
       status: 'pending',
       created_at: new Date().toISOString(),
       nc_row_id: nextNc(data),
@@ -273,14 +295,96 @@ export async function getKeyframesForBeatLocal(beatId: string, branchId?: string
 
 export async function updateKeyframeLocal(
   keyframeId: string,
-  updates: Partial<{ imageUrl: string; status: KeyframeRecord['status'] }>
+  updates: Partial<{
+    imageUrl: string
+    storageBucket: string
+    objectKey: string
+    storageProvider: string
+    status: KeyframeRecord['status']
+  }>
 ): Promise<KeyframeRecord> {
   return serialize(async () => {
     const data = await load()
     const existing = data.keyframes[keyframeId]
     if (!existing) throw new Error(`Local store: keyframe not found: ${keyframeId}`)
     if (updates.imageUrl !== undefined) existing.image_url = updates.imageUrl
+    if (updates.storageBucket !== undefined) existing.storage_bucket = updates.storageBucket
+    if (updates.objectKey !== undefined) existing.object_key = updates.objectKey
+    if (updates.storageProvider !== undefined) existing.storage_provider = updates.storageProvider
     if (updates.status !== undefined) existing.status = updates.status
+    await save(data)
+    return existing
+  })
+}
+
+export async function createCharacterLocal(character: {
+  characterId: string
+  sessionId: string
+  name: string
+  kind: CharacterRecord['kind']
+  descriptor?: string
+  sourceImageUrl?: string
+  sheetImageUrl?: string
+  lookSheetImageUrl?: string
+  lookLabel?: string
+  megaPrompt?: string
+}): Promise<CharacterRecord> {
+  return serialize(async () => {
+    const data = await load()
+    const row: CharacterRecord = {
+      character_id: character.characterId,
+      session_id: character.sessionId,
+      name: character.name,
+      kind: character.kind,
+      descriptor: character.descriptor ?? null,
+      source_image_url: character.sourceImageUrl ?? null,
+      sheet_image_url: character.sheetImageUrl ?? null,
+      look_sheet_image_url: character.lookSheetImageUrl ?? null,
+      look_label: character.lookLabel ?? 'Default',
+      mega_prompt: character.megaPrompt ?? null,
+      created_at: new Date().toISOString(),
+      nc_row_id: nextNc(data),
+    }
+    data.characters[character.characterId] = row
+    await save(data)
+    return row
+  })
+}
+
+export async function getCharactersForSessionLocal(
+  sessionId: string
+): Promise<CharacterRecord[]> {
+  const data = await load()
+  return Object.values(data.characters)
+    .filter((c) => c.session_id === sessionId)
+    .sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''))
+}
+
+export async function updateCharacterLocal(
+  characterId: string,
+  updates: Partial<{
+    name: string
+    kind: CharacterRecord['kind']
+    descriptor: string
+    sourceImageUrl: string
+    sheetImageUrl: string
+    lookSheetImageUrl: string
+    lookLabel: string
+    megaPrompt: string
+  }>
+): Promise<CharacterRecord> {
+  return serialize(async () => {
+    const data = await load()
+    const existing = data.characters[characterId]
+    if (!existing) throw new Error(`Local store: character not found: ${characterId}`)
+    if (updates.name !== undefined) existing.name = updates.name
+    if (updates.kind !== undefined) existing.kind = updates.kind
+    if (updates.descriptor !== undefined) existing.descriptor = updates.descriptor
+    if (updates.sourceImageUrl !== undefined) existing.source_image_url = updates.sourceImageUrl
+    if (updates.sheetImageUrl !== undefined) existing.sheet_image_url = updates.sheetImageUrl
+    if (updates.lookSheetImageUrl !== undefined) existing.look_sheet_image_url = updates.lookSheetImageUrl
+    if (updates.lookLabel !== undefined) existing.look_label = updates.lookLabel
+    if (updates.megaPrompt !== undefined) existing.mega_prompt = updates.megaPrompt
     await save(data)
     return existing
   })

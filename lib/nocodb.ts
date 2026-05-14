@@ -11,6 +11,7 @@ import type {
   StorySession,
   StoryBeatRecord,
   BranchRecord,
+  CharacterRecord,
   KeyframeRecord,
 } from './storyception-schema'
 
@@ -18,6 +19,7 @@ export type {
   StorySession,
   StoryBeatRecord,
   BranchRecord,
+  CharacterRecord,
   KeyframeRecord,
 } from './storyception-schema'
 
@@ -62,6 +64,9 @@ export async function createSession(session: {
   archetype: string
   outcome: string
   referenceImageUrl?: string
+  referenceImageBucket?: string
+  referenceImageObjectKey?: string
+  referenceStorageProvider?: string
   totalBeats?: number
 }): Promise<StorySession> {
   return (await getMode()) === 'nocodb'
@@ -150,6 +155,9 @@ export async function createKeyframe(keyframe: {
   col: number
   prompt: string
   imageUrl?: string
+  storageBucket?: string
+  objectKey?: string
+  storageProvider?: string
 }): Promise<KeyframeRecord> {
   return (await getMode()) === 'nocodb'
     ? v3.createKeyframeV3(keyframe)
@@ -164,7 +172,13 @@ export async function getKeyframesForBeat(beatId: string, branchId?: string): Pr
 
 export async function updateKeyframe(
   keyframeId: string,
-  updates: Partial<{ imageUrl: string; status: 'pending' | 'generating' | 'ready' | 'error' }>
+  updates: Partial<{
+    imageUrl: string
+    storageBucket: string
+    objectKey: string
+    storageProvider: string
+    status: 'pending' | 'generating' | 'ready' | 'error'
+  }>
 ): Promise<KeyframeRecord> {
   return (await getMode()) === 'nocodb'
     ? v3.updateKeyframeV3(keyframeId, updates)
@@ -188,6 +202,56 @@ export async function bulkCreateKeyframes(
     : local.bulkCreateKeyframesLocal(keyframes)
 }
 
+/**
+ * Characters live in NocoDB only if `NOCODB_TABLE_CHARACTERS` is configured.
+ * Until then, they live in the local file store regardless of the main backend
+ * mode (so the app works the moment you create the table — no other changes).
+ */
+async function useCharactersInNoco(): Promise<boolean> {
+  return (await getMode()) === 'nocodb' && !!v3.TABLES.characters
+}
+
+export async function createCharacter(character: {
+  characterId: string
+  sessionId: string
+  name: string
+  kind: CharacterRecord['kind']
+  descriptor?: string
+  sourceImageUrl?: string
+  sheetImageUrl?: string
+  lookSheetImageUrl?: string
+  lookLabel?: string
+  megaPrompt?: string
+}): Promise<CharacterRecord> {
+  return (await useCharactersInNoco())
+    ? v3.createCharacterV3(character)
+    : local.createCharacterLocal(character)
+}
+
+export async function getCharactersForSession(sessionId: string): Promise<CharacterRecord[]> {
+  return (await useCharactersInNoco())
+    ? v3.getCharactersForSessionV3(sessionId)
+    : local.getCharactersForSessionLocal(sessionId)
+}
+
+export async function updateCharacter(
+  characterId: string,
+  updates: Partial<{
+    name: string
+    kind: CharacterRecord['kind']
+    descriptor: string
+    sourceImageUrl: string
+    sheetImageUrl: string
+    lookSheetImageUrl: string
+    lookLabel: string
+    megaPrompt: string
+  }>
+): Promise<CharacterRecord> {
+  return (await useCharactersInNoco())
+    ? v3.updateCharacterV3(characterId, updates)
+    : local.updateCharacterLocal(characterId, updates)
+}
+
 export function generateSessionId(): string {
   return `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 }
@@ -205,21 +269,6 @@ export function generateKeyframeId(beatId: string, branchId: string | null, fram
   return `${base}-kf-${frameIndex}`
 }
 
-const NEXTCLOUD_URL = process.env.NEXTCLOUD_URL || 'https://cloud.v1su4.dev'
-const NEXTCLOUD_USER = process.env.NEXTCLOUD_USER || 'admin'
-const NEXTCLOUD_APP_PASSWORD = process.env.NEXTCLOUD_APP_PASSWORD || ''
-
-export function getNextcloudPath(sessionId: string, beatId: string, frameIndex: number, branchId?: string): string {
-  const p = branchId
-    ? `storyception/${sessionId}/${beatId}/${branchId}/keyframe-${frameIndex}.png`
-    : `storyception/${sessionId}/${beatId}/keyframe-${frameIndex}.png`
-  return p
-}
-
-export const nextcloudConfig = {
-  url: NEXTCLOUD_URL,
-  user: NEXTCLOUD_USER,
-  appPassword: NEXTCLOUD_APP_PASSWORD,
-  webdavUrl: `${NEXTCLOUD_URL}/remote.php/dav/files/${NEXTCLOUD_USER}`,
-  shareApiUrl: `${NEXTCLOUD_URL}/ocs/v2.php/apps/files_sharing/api/v1/shares`,
+export function generateCharacterId(sessionId: string, index: number): string {
+  return `${sessionId}-char-${index}`
 }

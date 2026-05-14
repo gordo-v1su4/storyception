@@ -1,46 +1,51 @@
 /**
  * Branch Generation API Route
- * 
- * Generates branch options (A, B, C) for a story beat:
- * 1. Takes current story context + beat info
- * 2. Generates 3 alternative paths via Gemini
- * 3. Triggers parallel image generation for each branch
- * 4. Returns branches with pre-cached 9-frame grids
- * 
- * This is the core of "Storyception" - multi-level branching
+ *
+ * Generates branch options (A, B, C) for a story beat.
+ *
+ * Default: in-app Gemini (`gemini-3.1-pro-preview`) via {@link generateBranchesWithGemini}
+ * — Google Gen AI / Gemini API only (no Vertex in this path).
+ *
+ * Optional: set STORYCEPTION_BRANCH_USE_N8N=1 to delegate to an n8n webhook
+ * (external workflows must also use Google models only if you want a pure-Google stack).
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { generateBranchesWithGemini } from '@/lib/branch-generation-gemini'
 
 const N8N_BASE_URL = process.env.N8N_BASE_URL || 'https://n8n.v1su4.dev'
 const N8N_WEBHOOK_BRANCH = process.env.N8N_WEBHOOK_BRANCH_GENERATE || '/webhook/branch-generate'
+
+function useN8nForBranches(): boolean {
+  return process.env.STORYCEPTION_BRANCH_USE_N8N?.trim() === '1'
+}
 
 export interface BranchGenerationRequest {
   storyId: string
   beatId: string
   beatLabel: string
-  currentContext: string       // Story so far
+  currentContext: string
   archetype: string
   outcome: string
-  depth?: number               // Inception depth (0 = main story, 1+ = nested branch)
-  parentBranchId?: string      // If this is a nested branch
+  depth?: number
+  parentBranchId?: string
 }
 
 export interface GeneratedBranch {
   id: string
-  label: string                // e.g., "Path A: The Confrontation"
+  label: string
   title: string
   description: string
-  type: string                 // confrontation, discovery, escape, etc.
+  type: string
   duration: string
   sceneIdea: string
-  imagePrompts: string[]       // 9 prompts for keyframe grid
+  imagePrompts: string[]
   keyframes?: {
     id: number
     url: string
     prompt: string
   }[]
-  consequences: string         // How this affects future beats
+  consequences: string
 }
 
 export interface BranchGenerationResponse {
@@ -56,18 +61,53 @@ export interface BranchGenerationResponse {
   }
 }
 
+const SUFFIXES = ['a', 'b', 'c'] as const
+
 export async function POST(request: NextRequest) {
   try {
     const body: BranchGenerationRequest = await request.json()
-    
-    // Validate required fields
+
     if (!body.storyId || !body.beatId) {
-      return NextResponse.json(
-        { error: 'storyId and beatId are required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'storyId and beatId are required' }, { status: 400 })
     }
-    
+
+    const metadataBase = {
+      beatId: body.beatId,
+      depth: body.depth || 0,
+      parentBranchId: body.parentBranchId,
+      generatedAt: new Date().toISOString(),
+    }
+
+    if (!useN8nForBranches()) {
+      const { branches: rows } = await generateBranchesWithGemini({
+        beatId: body.beatId,
+        beatLabel: body.beatLabel || 'Beat',
+        currentContext: body.currentContext || '',
+        archetype: body.archetype || 'Story',
+        outcome: body.outcome || 'Ambiguous',
+      })
+
+      const branches: GeneratedBranch[] = rows.map((r, i) => ({
+        id: `${body.beatId}-${SUFFIXES[i] ?? i}`,
+        label: r.label,
+        title: r.title,
+        description: r.description,
+        type: r.type,
+        duration: r.duration,
+        sceneIdea: r.sceneIdea,
+        imagePrompts: r.imagePrompts,
+        consequences: r.consequences,
+      }))
+
+      return NextResponse.json({
+        success: true,
+        requestId: `gemini-${Date.now()}`,
+        status: 'ready',
+        branches,
+        metadata: metadataBase,
+      } satisfies BranchGenerationResponse)
+    }
+
     const payload = {
       storyId: body.storyId,
       beat: {
@@ -78,95 +118,39 @@ export async function POST(request: NextRequest) {
       archetype: body.archetype,
       outcome: body.outcome,
       branchConfig: {
-        count: 3,                           // Always A, B, C
+        count: 3,
         depth: body.depth || 0,
         parentBranchId: body.parentBranchId,
-        generateImages: true,               // Pre-generate all 3 sets
-        parallelImageGeneration: true,      // Generate all in parallel
+        generateImages: true,
+        parallelImageGeneration: true,
       },
       timestamp: new Date().toISOString(),
     }
-    
-    // Trigger N8N webhook for branch generation
+
     const response = await fetch(`${N8N_BASE_URL}${N8N_WEBHOOK_BRANCH}`, {
       method: 'POST',
-      headers: { 
+      headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
     })
-    
+
     if (!response.ok) {
       const errorText = await response.text()
       console.error('N8N Branch Generation Error:', errorText)
-      
-      // Return mock branches for development
-      if (response.status === 404) {
-        const mockBranches: GeneratedBranch[] = [
-          {
-            id: `${body.beatId}-a`,
-            label: 'Path A',
-            title: 'The Confrontation',
-            description: 'Face the challenge head-on with courage and determination.',
-            type: 'confrontation',
-            duration: '8.0s',
-            sceneIdea: 'The hero steps forward, ready to face whatever comes.',
-            imagePrompts: Array(9).fill('Placeholder prompt'),
-            consequences: 'Higher risk, potentially higher reward.',
-          },
-          {
-            id: `${body.beatId}-b`,
-            label: 'Path B',
-            title: 'The Discovery',
-            description: 'Uncover a hidden truth that changes everything.',
-            type: 'discovery',
-            duration: '6.5s',
-            sceneIdea: 'A revelation emerges from the shadows.',
-            imagePrompts: Array(9).fill('Placeholder prompt'),
-            consequences: 'New information unlocks alternative paths.',
-          },
-          {
-            id: `${body.beatId}-c`,
-            label: 'Path C',
-            title: 'The Escape',
-            description: 'Retreat to fight another day, preserving what matters.',
-            type: 'escape',
-            duration: '5.0s',
-            sceneIdea: 'Quick thinking leads to a narrow escape.',
-            imagePrompts: Array(9).fill('Placeholder prompt'),
-            consequences: 'Safety now, but the challenge remains.',
-          },
-        ]
-        
-        return NextResponse.json({
-          success: true,
-          message: 'Development mode - using mock branches',
-          requestId: `dev-${Date.now()}`,
-          status: 'ready',
-          branches: mockBranches,
-          metadata: {
-            beatId: body.beatId,
-            depth: body.depth || 0,
-            parentBranchId: body.parentBranchId,
-            generatedAt: new Date().toISOString(),
-          }
-        } as BranchGenerationResponse)
-      }
-      
       throw new Error(`N8N Error: ${response.status} - ${errorText}`)
     }
-    
+
     const result = await response.json()
-    
+
     return NextResponse.json({
       success: true,
       ...result,
     })
-    
   } catch (error) {
     console.error('Branch Generation Error:', error)
     return NextResponse.json(
-      { 
+      {
         success: false,
         error: error instanceof Error ? error.message : 'Branch generation failed',
       },
@@ -175,27 +159,25 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET - Check branch generation status
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const requestId = searchParams.get('requestId')
   const beatId = searchParams.get('beatId')
-  
+
   if (!requestId && !beatId) {
     return NextResponse.json({
       message: 'Branch Generation API (Storyception)',
       usage: 'POST with storyId, beatId, beatLabel, and context',
+      defaultBackend: 'Gemini in-app (set STORYCEPTION_BRANCH_USE_N8N=1 for n8n webhook)',
       features: [
         'Generates 3 branch options (A, B, C)',
-        'Parallel image generation for all branches',
-        'Supports nested branching (inception depth)',
-        'Pre-caches images for instant selection',
+        'Nine image prompts per branch for downstream Gemini image grids',
+        'Optional n8n orchestration when STORYCEPTION_BRANCH_USE_N8N=1',
       ],
-      endpoint: N8N_WEBHOOK_BRANCH,
+      n8nWebhook: N8N_WEBHOOK_BRANCH,
     })
   }
-  
-  // TODO: Implement branch status/retrieval via NocoDB
+
   return NextResponse.json({
     requestId,
     beatId,

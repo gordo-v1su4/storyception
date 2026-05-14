@@ -15,44 +15,47 @@ import { archetypes, beatStructures } from '@/lib/data'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { archetypeIndex, archetypeName, outcomeName, referenceImages } = body
+    const { archetypeIndex, archetypeName, outcomeName, referenceImages, referenceAssets } = body
 
     // 1. Run the StoryWorkflow
+    const beatsDefForPrompt = beatStructures[archetypeIndex] || []
     const workflowResult = await StoryWorkflow.run({
       archetypeName,
       outcomeName,
-      referenceImages
+      referenceImages,
+      beatLabels: beatsDefForPrompt.map((b: { label: string }) => b.label),
     })
 
     const storyData = workflowResult.PlanStory
     const visualData = workflowResult.GenerateVisuals
 
     const sessionId = generateSessionId()
-    const beatsDef = beatStructures[archetypeIndex] || []
+    const beatsDef = beatsDefForPrompt
 
-    const allBeats = beatsDef.map((beatDef: any, index: number) => {
+    const allBeats = beatsDef.map((beatDef: { label: string }, index: number) => {
       const generated = storyData.beats[index]
-      if (generated && index < 2) {
-        const visualBeat = visualData.find((b: any) => b.label === generated.label)
+      const visualBeat = visualData[index]
+      // First 2 beats get generated content + 9 keyframe prompts; the rest stay
+      // as skeletons until the user reaches them via branch selection.
+      if (generated && index < 2 && generated.scene_description) {
         return {
           id: generateBeatId(sessionId, index),
-          label: generated.label,
+          label: generated.label || beatDef.label,
           scene_description: generated.scene_description,
           duration_seconds: generated.duration_seconds || 6,
-          keyframe_prompts: visualBeat?.keyframe_prompts || [],
+          keyframe_prompts: visualBeat?.keyframe_prompts || generated.keyframe_prompts || [],
           index,
           status: 'pending'
         }
-      } else {
-        return {
-          id: generateBeatId(sessionId, index),
-          label: beatDef.label,
-          scene_description: '',
-          duration_seconds: 6,
-          keyframe_prompts: [],
-          index,
-          status: 'skeleton'
-        }
+      }
+      return {
+        id: generateBeatId(sessionId, index),
+        label: beatDef.label,
+        scene_description: '',
+        duration_seconds: 6,
+        keyframe_prompts: [],
+        index,
+        status: 'skeleton'
       }
     })
 
@@ -68,6 +71,9 @@ export async function POST(request: NextRequest) {
         archetype: archetypeName,
         outcome: outcomeName,
         referenceImageUrl: referenceImages?.[0],
+        referenceImageBucket: referenceAssets?.[0]?.bucket,
+        referenceImageObjectKey: referenceAssets?.[0]?.objectKey,
+        referenceStorageProvider: referenceAssets?.[0] ? 'rustfs' : undefined,
         totalBeats: beatsDef.length
       })
 

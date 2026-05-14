@@ -4,6 +4,7 @@
 
 import type {
   BranchRecord,
+  CharacterRecord,
   KeyframeRecord,
   StoryBeatRecord,
   StorySession,
@@ -18,6 +19,7 @@ export const TABLES = {
   beats: process.env.NOCODB_TABLE_BEATS?.trim() || '',
   branches: process.env.NOCODB_TABLE_BRANCHES?.trim() || '',
   keyframes: process.env.NOCODB_TABLE_KEYFRAMES?.trim() || '',
+  characters: process.env.NOCODB_TABLE_CHARACTERS?.trim() || '',
 }
 
 const NOCODB_BASE_ID = process.env.NOCODB_BASE_ID || ''
@@ -101,6 +103,9 @@ export async function createSessionV3(session: {
   archetype: string
   outcome: string
   referenceImageUrl?: string
+  referenceImageBucket?: string
+  referenceImageObjectKey?: string
+  referenceStorageProvider?: string
   totalBeats?: number
 }): Promise<StorySession> {
   const now = new Date().toISOString()
@@ -111,6 +116,9 @@ export async function createSessionV3(session: {
       archetype: session.archetype,
       outcome: session.outcome,
       reference_image_url: referenceImageUrlForPersistence(session.referenceImageUrl),
+      reference_image_bucket: session.referenceImageBucket ?? null,
+      reference_image_object_key: session.referenceImageObjectKey ?? null,
+      reference_storage_provider: session.referenceStorageProvider ?? null,
       status: 'active',
       current_beat: 1,
       total_beats: session.totalBeats || 15,
@@ -301,6 +309,9 @@ export async function createKeyframeV3(keyframe: {
   col: number
   prompt: string
   imageUrl?: string
+  storageBucket?: string
+  objectKey?: string
+  storageProvider?: string
 }): Promise<KeyframeRecord> {
   const body = {
     fields: {
@@ -313,6 +324,9 @@ export async function createKeyframeV3(keyframe: {
       grid_col: keyframe.col,
       prompt: keyframe.prompt,
       image_url: keyframe.imageUrl ?? '',
+      storage_bucket: keyframe.storageBucket ?? null,
+      object_key: keyframe.objectKey ?? null,
+      storage_provider: keyframe.storageProvider ?? null,
       status: 'pending',
       created_at: new Date().toISOString(),
     },
@@ -336,12 +350,21 @@ export async function getKeyframesForBeatV3(beatId: string, branchId?: string): 
 
 export async function updateKeyframeV3(
   keyframeId: string,
-  updates: Partial<{ imageUrl: string; status: KeyframeRecord['status'] }>
+  updates: Partial<{
+    imageUrl: string
+    storageBucket: string
+    objectKey: string
+    storageProvider: string
+    status: KeyframeRecord['status']
+  }>
 ): Promise<KeyframeRecord> {
   const existing = await findOne(TABLES.keyframes, whereEqString('keyframe_id', keyframeId))
   if (!existing) throw new Error(`NocoDB Error: keyframe not found: ${keyframeId}`)
   const fields: Record<string, unknown> = {}
   if (updates.imageUrl !== undefined) fields.image_url = updates.imageUrl
+  if (updates.storageBucket !== undefined) fields.storage_bucket = updates.storageBucket
+  if (updates.objectKey !== undefined) fields.object_key = updates.objectKey
+  if (updates.storageProvider !== undefined) fields.storage_provider = updates.storageProvider
   if (updates.status !== undefined) fields.status = updates.status
   const result = await nocodbFetch(recordsPath(TABLES.keyframes), {
     method: 'PATCH',
@@ -350,6 +373,91 @@ export async function updateKeyframeV3(
   const rec = (result.records as NcV3Record[])?.[0]
   if (!rec) throw new Error('NocoDB Error: updateKeyframe returned no record')
   return unwrapRecord<KeyframeRecord>(rec)
+}
+
+export async function createCharacterV3(character: {
+  characterId: string
+  sessionId: string
+  name: string
+  kind: CharacterRecord['kind']
+  descriptor?: string
+  sourceImageUrl?: string
+  sheetImageUrl?: string
+  lookSheetImageUrl?: string
+  lookLabel?: string
+  megaPrompt?: string
+}): Promise<CharacterRecord> {
+  if (!TABLES.characters) {
+    throw new Error('NOCODB_TABLE_CHARACTERS not configured')
+  }
+  const body = {
+    fields: {
+      character_id: character.characterId,
+      session_id: character.sessionId,
+      name: character.name,
+      kind: character.kind,
+      descriptor: character.descriptor ?? null,
+      source_image_url: character.sourceImageUrl ?? null,
+      sheet_image_url: character.sheetImageUrl ?? null,
+      look_sheet_image_url: character.lookSheetImageUrl ?? null,
+      look_label: character.lookLabel ?? 'Default',
+      mega_prompt: character.megaPrompt ?? null,
+      created_at: new Date().toISOString(),
+    },
+  }
+  const result = await nocodbFetch(recordsPath(TABLES.characters), {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+  const rec = (result.records as NcV3Record[])?.[0]
+  if (!rec) throw new Error('NocoDB Error: createCharacter returned no record')
+  return unwrapRecord<CharacterRecord>(rec)
+}
+
+export async function getCharactersForSessionV3(sessionId: string): Promise<CharacterRecord[]> {
+  if (!TABLES.characters) return []
+  const params = new URLSearchParams({
+    where: whereEqString('session_id', sessionId),
+    sort: v3Sort('created_at'),
+  })
+  const rows = await fetchRecordsJson(TABLES.characters, params)
+  return rows.map((r) => unwrapRecord<CharacterRecord>(r))
+}
+
+export async function updateCharacterV3(
+  characterId: string,
+  updates: Partial<{
+    name: string
+    kind: CharacterRecord['kind']
+    descriptor: string
+    sourceImageUrl: string
+    sheetImageUrl: string
+    lookSheetImageUrl: string
+    lookLabel: string
+    megaPrompt: string
+  }>
+): Promise<CharacterRecord> {
+  if (!TABLES.characters) {
+    throw new Error('NOCODB_TABLE_CHARACTERS not configured')
+  }
+  const existing = await findOne(TABLES.characters, whereEqString('character_id', characterId))
+  if (!existing) throw new Error(`NocoDB Error: character not found: ${characterId}`)
+  const fields: Record<string, unknown> = {}
+  if (updates.name !== undefined) fields.name = updates.name
+  if (updates.kind !== undefined) fields.kind = updates.kind
+  if (updates.descriptor !== undefined) fields.descriptor = updates.descriptor
+  if (updates.sourceImageUrl !== undefined) fields.source_image_url = updates.sourceImageUrl
+  if (updates.sheetImageUrl !== undefined) fields.sheet_image_url = updates.sheetImageUrl
+  if (updates.lookSheetImageUrl !== undefined) fields.look_sheet_image_url = updates.lookSheetImageUrl
+  if (updates.lookLabel !== undefined) fields.look_label = updates.lookLabel
+  if (updates.megaPrompt !== undefined) fields.mega_prompt = updates.megaPrompt
+  const result = await nocodbFetch(recordsPath(TABLES.characters), {
+    method: 'PATCH',
+    body: JSON.stringify({ id: existing.id, fields }),
+  })
+  const rec = (result.records as NcV3Record[])?.[0]
+  if (!rec) throw new Error('NocoDB Error: updateCharacter returned no record')
+  return unwrapRecord<CharacterRecord>(rec)
 }
 
 export async function bulkCreateKeyframesV3(

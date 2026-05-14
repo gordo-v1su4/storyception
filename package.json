@@ -4,14 +4,14 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "dev": "next dev",
+    "dev": "bun run scripts/dev.ts",
     "lint": "eslint .",
-    "start": "next start"
+    "smoke": "bun run scripts/smoke-test-apis.ts",
+    "start": "next start -p 3000"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "latest",
-    "@google/adk": "^1.1.0",
-    "@google/generative-ai": "^0.24.1",
+    "@google/genai": "^2.2.0",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",

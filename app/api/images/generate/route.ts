@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import sharp from 'sharp'
 import { 
   updateKeyframe, 
-  updateBeat,
-  nextcloudConfig
+  updateBeat
 } from '@/lib/nocodb'
 import { getGeminiApiKey } from '@/lib/gemini-api-key'
+import { generateStoryboardGridBase64 } from '@/lib/gemini-storyboard-image'
+import { uploadBufferViaMediaApi } from '@/lib/object-storage'
 
-const MODEL = 'gemini-3-pro-image-preview'
 /** Avoid regex on multi‑MB data URLs — `.+` / dotAll can blow the regexp stack. */
 const DATA_URL_MAX_BYTES = 35 * 1024 * 1024
 
@@ -83,44 +83,6 @@ function mimeMatch(m: string): boolean {
   return /^image\/(png|jpeg|jpg|webp|gif)$/i.test(m)
 }
 
-async function nextcloudUpload(imageBuffer: Buffer, remotePath: string): Promise<string | null> {
-  const auth = Buffer.from(`${nextcloudConfig.user}:${nextcloudConfig.appPassword}`).toString('base64')
-  
-  const uploadResponse = await fetch(`${nextcloudConfig.webdavUrl}/${remotePath}`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Basic ${auth}`,
-      'Content-Type': 'image/png',
-    },
-    body: imageBuffer as unknown as BodyInit,
-  })
-
-  if (!uploadResponse.ok) return null
-
-  const shareResponse = await fetch(nextcloudConfig.shareApiUrl, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${auth}`,
-      'OCS-APIRequest': 'true',
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      path: `/${remotePath}`,
-      shareType: '3',
-      permissions: '1',
-    }),
-  })
-
-  if (shareResponse.ok) {
-    const text = await shareResponse.text()
-    const urlMatch = text.match(/<url>([^<]+)<\/url>/)
-    if (urlMatch) {
-      return urlMatch[1].replace('http://', 'https://') + '/download'
-    }
-  }
-  return null
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -133,15 +95,15 @@ export async function POST(request: NextRequest) {
       referenceImageUrl,
       beatLabel,
       beatDescription,
+      branchContext,
     } = body
 
-    const apiKey = getGeminiApiKey()
-    if (!apiKey) {
+    if (!getGeminiApiKey()) {
       return NextResponse.json(
         {
           success: false,
           error:
-            'No Gemini API key: set GOOGLE_GENERATIVE_AI_API_KEY, GOOGLE_GENAI_API_KEY, or GEMINI_API_KEY',
+            'No Gemini API key: set GOOGLE_CLOUD_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, GOOGLE_GENAI_API_KEY, GEMINI_API_KEY, or GOOGLE_API_KEY',
         },
         { status: 500 }
       )
@@ -156,45 +118,19 @@ export async function POST(request: NextRequest) {
       referenceImageUrl,
     })
 
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`
+    const branchNote =
+      typeof branchContext === 'string' && branchContext.trim()
+        ? ` Narrative context: ${branchContext.trim()}`
+        : ''
 
-    // 1. Generate Storyboard with Native Nano Banana Pro (Gemini 3 Pro Image)
-    const prompt = `Transform the provided reference image into a cinematic sequence of 9 keyframes arranged in a 3x3 grid. Keyframes: ${prompts.join(' | ')}`
-    
-    const payload = {
-      contents: [{
-        parts: [
-          {
-            inlineData: {
-              mimeType,
-              data: imageB64
-            }
-          },
-          { text: prompt }
-        ]
-      }],
-      generationConfig: {
-        imageConfig: {
-          aspectRatio: "16:9",
-          imageSize: "2K"
-        }
-      }
-    }
+    const imagePrompt = `Transform the provided reference image into a cinematic sequence of 9 keyframes arranged in a 3x3 grid.${branchNote} Keyframes: ${prompts.join(' | ')}`
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+    const generatedImageBase64 = await generateStoryboardGridBase64({
+      referenceMimeType: mimeType,
+      referenceBase64: imageB64,
+      prompt: imagePrompt,
     })
 
-    if (!response.ok) {
-      throw new Error(`Google Native API Error: ${response.status}`)
-    }
-
-    const data = await response.json()
-    const generatedImageBase64 = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data
-    if (!generatedImageBase64) throw new Error('No image data in Google response')
-    
     const gridBuffer = Buffer.from(generatedImageBase64, 'base64')
 
     // 2. Slice Grid into 9 Keyframes
@@ -216,17 +152,23 @@ export async function POST(request: NextRequest) {
         .png()
         .toBuffer()
 
-      const remotePath = `Storyception/${sessionId}/${beatId}/kf-${i + 1}.png`
-      const publicUrl = await nextcloudUpload(cellBuffer, remotePath)
-      
-      if (publicUrl) {
-        keyframeUrls.push(publicUrl)
-        const keyframeId = `${beatId}-kf-${i + 1}`
-        await updateKeyframe(keyframeId, {
-          imageUrl: publicUrl,
-          status: 'ready'
-        })
-      }
+      const uploaded = await uploadBufferViaMediaApi({
+        buffer: cellBuffer,
+        fileName: `kf-${i + 1}.png`,
+        contentType: 'image/png',
+        folder: `sessions/${sessionId}/${beatId}`,
+        bucket: process.env.STORYCEPTION_MEDIA_BUCKET || 'storyception',
+      })
+
+      keyframeUrls.push(uploaded.publicUrl)
+      const keyframeId = `${beatId}-kf-${i + 1}`
+      await updateKeyframe(keyframeId, {
+        imageUrl: uploaded.publicUrl,
+        storageBucket: uploaded.bucket,
+        objectKey: uploaded.objectKey,
+        storageProvider: 'rustfs',
+        status: 'ready'
+      })
     }
 
     await updateBeat(beatId, {

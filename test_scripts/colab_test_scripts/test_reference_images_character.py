@@ -99,8 +99,11 @@ SCENE_PROMPT = (
 
 def generate():
     client = genai.Client(
+        # NOTE 2026-05-13: API-key auth is rejected by Vertex AI in 2026.
+        # See GOOGLE_AUTH_AND_PIPELINE_NOTES_2026-05-14.md.
         vertexai=True,
-        api_key=os.environ.get("GOOGLE_CLOUD_API_KEY"),
+        project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+        location=os.environ.get("GOOGLE_CLOUD_LOCATION", "global"),
     )
 
     model = "gemini-3-pro-image-preview"

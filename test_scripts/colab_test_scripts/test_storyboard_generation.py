@@ -1,6 +1,5 @@
 from google import genai
 from google.genai import types
-import base64
 import os
 from dataclasses import dataclass
 
@@ -73,7 +72,13 @@ def image_part_from_file(file_path: str, mime_type: str = "image/png") -> types.
 def build_reference_parts(char: Character) -> list[types.Part]:
     parts = []
     parts.append(types.Part.from_text(text=f"[CHARACTER REFERENCE]:\n{char.get_reference_label()}"))
-    parts.append(image_part_from_file(char.image_path))
+    if os.path.exists(char.image_path):
+        parts.append(image_part_from_file(char.image_path))
+    else:
+        print(
+            f"--- WARNING: Image not found for {char.name} at {char.image_path}. "
+            "Using text description only. ---"
+        )
     return parts
 
 # ---------------------------------------------------------------------------
@@ -81,9 +86,13 @@ def build_reference_parts(char: Character) -> list[types.Part]:
 # ---------------------------------------------------------------------------
 
 def generate():
+    # NOTE 2026-05-13: API-key auth (incl. `AQ.*` account-bound keys) is rejected
+    # by Vertex AI's PredictionService — use ADC instead. See
+    # GOOGLE_AUTH_AND_PIPELINE_NOTES_2026-05-14.md.
     client = genai.Client(
         vertexai=True,
-        api_key=os.environ.get("GOOGLE_CLOUD_API_KEY"),
+        project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+        location=os.environ.get("GOOGLE_CLOUD_LOCATION", "global"),
     )
 
     model = "gemini-3-pro-image-preview"

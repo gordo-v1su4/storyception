@@ -1,195 +1,300 @@
-import './adk-env';
-import { SequentialAgent, Runner } from '@google/adk';
-import { createNarrativeAgent, createVisualAgent } from './agents';
-import { InMemorySessionService } from '@google/adk';
-
-const storyNarrativeAgent = createNarrativeAgent('NarrativeAgent');
-const storyVisualAgent = createVisualAgent('VisualAgent');
-const branchNarrativeAgent = createNarrativeAgent('BranchNarrativeAgent');
-const branchVisualAgent = createVisualAgent('BranchVisualAgent');
-
 /**
- * Story Workflow - Orchestrates the initial story generation using SequentialAgent
+ * Storyception narrative workflows. Calls Gemini directly via `@google/genai`
+ * with `responseMimeType: 'application/json'` + a `responseSchema` for reliable
+ * structured output.
+ *
+ * Previously these went through the `@google/adk` SequentialAgent and parsed
+ * the agent's free-text reply with a brittle `/\{[\s\S]*\}/` regex. That
+ * regex extract silently dropped to `{}` on any prose/markdown wrapping,
+ * which is why beats were coming back with empty `scene_description` for
+ * every session even when auth was working.
+ *
+ * See `GOOGLE_AUTH_AND_PIPELINE_NOTES_2026-05-14.md` for the full back-story.
  */
-export const StoryWorkflowAgent = new SequentialAgent({
-  name: 'StoryWorkflowAgent',
-  description: 'Generates the initial story session and the first few beats.',
-  subAgents: [storyNarrativeAgent, storyVisualAgent],
-});
+
+import './adk-env'
+import { Type } from '@google/genai'
+import { createGeminiClient } from './gemini-client'
+import { getBranchNarrativeModel, getInitialStoryNarrativeModel } from './gemini-models'
+
+const STORY_TIMEOUT_MS =
+  Number.parseInt(process.env.GEMINI_TIMEOUT_MS ?? '', 10) || 90_000
+
+const SYSTEM_INSTRUCTION_STORY = `You are an award-winning screenwriter and interactive narrative designer.
+Always respond with valid JSON matching the provided schema. No markdown, no code fences, no prose around the JSON.`
+
+const SYSTEM_INSTRUCTION_BRANCH = `You are an expert interactive narrative designer.
+Always respond with valid JSON matching the provided schema. No markdown, no code fences, no prose around the JSON.`
+
+const STORY_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  required: ['story_title', 'story_logline', 'story_seed', 'beats'],
+  properties: {
+    story_title: { type: Type.STRING, description: 'A short, evocative title.' },
+    story_logline: {
+      type: Type.STRING,
+      description: 'One-sentence hook (≤ 30 words) capturing the central conflict.',
+    },
+    story_seed: {
+      type: Type.STRING,
+      description:
+        'A 2–3 sentence narrative direction — the through-line that anchors all beats.',
+    },
+    beats: {
+      type: Type.ARRAY,
+      minItems: 2,
+      maxItems: 2,
+      items: {
+        type: Type.OBJECT,
+        required: ['label', 'scene_description', 'duration_seconds', 'keyframe_prompts'],
+        properties: {
+          label: { type: Type.STRING },
+          scene_description: {
+            type: Type.STRING,
+            description: 'Vivid 2–3 sentence scene description.',
+          },
+          duration_seconds: { type: Type.NUMBER },
+          keyframe_prompts: {
+            type: Type.ARRAY,
+            minItems: 9,
+            maxItems: 9,
+            items: {
+              type: Type.STRING,
+              description:
+                'A 30–50 word cinematic prompt for one of 9 storyboard frames (3×3 grid).',
+            },
+          },
+        },
+      },
+    },
+  },
+}
+
+const BRANCH_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  required: ['branches'],
+  properties: {
+    branches: {
+      type: Type.ARRAY,
+      minItems: 2,
+      maxItems: 3,
+      items: {
+        type: Type.OBJECT,
+        required: ['label', 'outcome_hint'],
+        properties: {
+          label: {
+            type: Type.STRING,
+            description: 'Short verb-phrase title for the choice (≤ 6 words).',
+          },
+          outcome_hint: {
+            type: Type.STRING,
+            description: 'One sentence describing where this path leads.',
+          },
+        },
+      },
+    },
+  },
+}
+
+export interface PlannedBeat {
+  label: string
+  scene_description: string
+  duration_seconds: number
+  keyframe_prompts: string[]
+}
+
+export interface StoryWorkflowInput {
+  archetypeName: string
+  outcomeName: string
+  referenceImageUrl?: string
+  referenceImages?: string[]
+  beatLabels?: string[]
+}
+
+export interface StoryWorkflowResult {
+  message: string
+  PlanStory: {
+    story_title: string
+    story_logline: string
+    story_seed: string
+    beats: PlannedBeat[]
+  }
+  GenerateVisuals: PlannedBeat[]
+}
 
 export const StoryWorkflow = {
-  run: async (input: any) => {
-    const runner = new Runner({
-      appName: 'Storyception',
-      agent: StoryWorkflowAgent,
-      sessionService: new InMemorySessionService(),
-    });
+  async run(input: StoryWorkflowInput): Promise<StoryWorkflowResult> {
+    const referenceLine =
+      input.referenceImageUrl || input.referenceImages?.[0]
+        ? `\nReference image (visual anchor for tone, lighting, palette): ${
+            input.referenceImageUrl || input.referenceImages?.[0]
+          }`
+        : ''
 
-    const instructionContent = `
-      Start by using the NarrativeAgent to plan a story using the ${input.archetypeName} archetype.
-      Outcome: ${input.outcomeName}
-      Generate the first 2 beats and a story seed.
-      Then, automatically pass control to the VisualAgent.
-      The VisualAgent should generate 9 keyframe prompts for the generated beats and use the 'visual_generation_tool' to create the storyboard grids.
-      Reference Image: ${input.referenceImageUrl || input.referenceImages?.[0] || ''}
-    `;
+    const beatLabelsLine = input.beatLabels?.length
+      ? `\nThe overall archetype has these beat labels in order (you are only writing the first 2):\n${input.beatLabels
+          .map((l, i) => `  ${i + 1}. ${l}`)
+          .join('\n')}`
+      : ''
 
-    const generator = runner.runEphemeral({
-      userId: 'test-user',
-      newMessage: { role: 'user', parts: [{ text: instructionContent }] }
-    });
+    const prompt = `Plan the opening of an interactive cinematic short.
 
-    const events = [];
-    let finalContent = '';
-    for await (const event of generator) {
-      events.push(event);
-      if (event.type === 'content' && event.content?.parts?.[0]?.text) {
-        finalContent += event.content.parts[0].text;
-      }
-    }
+Archetype: ${input.archetypeName}
+Target outcome: ${input.outcomeName}${beatLabelsLine}${referenceLine}
 
-    // Attempt to extract JSON from the agent's output
-    let parsedData: any = {};
-    try {
-      const jsonMatch = finalContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsedData = JSON.parse(jsonMatch[0]);
-      }
-    } catch (e) {
-      console.warn('Could not parse agent output as JSON');
-    }
+Write:
+1. A short, evocative story_title.
+2. A one-sentence story_logline (≤ 30 words).
+3. A 2–3 sentence story_seed that establishes the protagonist, world, and core tension — this is the through-line all later beats will follow.
+4. The first 2 beats. For each beat provide a vivid scene_description and exactly 9 keyframe_prompts following this cinematic order:
+   KF1 Wide establishing shot · KF2 Medium introducing characters · KF3 Close-up on protagonist · KF4 Action / movement · KF5 Central dramatic moment · KF6 Reaction · KF7 Environmental detail · KF8 Character interaction · KF9 Closing moment.
+   Each keyframe_prompt is 30–50 words and includes camera angle, lighting, character action, atmosphere.
 
-    return { 
-      message: 'Workflow completed successfully',
-      events: events,
-      PlanStory: {
-        story_title: parsedData.story_title || "Generated Title",
-        story_logline: parsedData.story_logline || "Generated logline",
-        story_seed: parsedData.story_seed || "Generated story seed",
-        beats: parsedData.beats || []
+Respond ONLY with JSON matching the response schema.`
+
+    const model = getInitialStoryNarrativeModel()
+    const ai = createGeminiClient()
+    const abortSignal = AbortSignal.timeout(STORY_TIMEOUT_MS)
+
+    const res = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        abortSignal,
+        temperature: 0.9,
+        maxOutputTokens: 8192,
+        responseMimeType: 'application/json',
+        responseSchema: STORY_RESPONSE_SCHEMA,
+        systemInstruction: SYSTEM_INSTRUCTION_STORY,
       },
-      GenerateVisuals: parsedData.beats || []
-    };
-  }
-};
-
-/**
- * Branch Workflow - Orchestrates progressive generation when a user picks a path
- */
-export const BranchWorkflowAgent = new SequentialAgent({
-  name: 'BranchWorkflowAgent',
-  description: 'Generates context-aware branches and the next beat in the sequence.',
-  subAgents: [branchNarrativeAgent, branchVisualAgent],
-});
-
-function normalizeWorkflowBranches(parsedData: Record<string, unknown>): {
-  label: string
-  outcome_hint: string
-}[] {
-  const raw =
-    parsedData.branches ??
-    parsedData.branch_options ??
-    parsedData.options ??
-    []
-  if (!Array.isArray(raw)) return []
-  return raw
-    .map((item: unknown, i: number) => {
-      if (typeof item === 'string')
-        return { label: `Path ${i + 1}`, outcome_hint: item }
-      if (!item || typeof item !== 'object') return null
-      const o = item as Record<string, unknown>
-      const label = o.label ?? o.title ?? o.name ?? `Branch ${i + 1}`
-      const outcome_hint =
-        o.outcome_hint ?? o.description ?? o.desc ?? o.hint ?? ''
-      return {
-        label: String(label),
-        outcome_hint: String(outcome_hint),
-      }
     })
-    .filter((b): b is { label: string; outcome_hint: string } =>
-      Boolean(b && (b.label || b.outcome_hint))
-    )
+
+    const text = (res.text ?? '').trim()
+    if (!text) {
+      throw new Error('Gemini returned empty response for story planning')
+    }
+
+    let parsed: {
+      story_title?: string
+      story_logline?: string
+      story_seed?: string
+      beats?: PlannedBeat[]
+    }
+    try {
+      parsed = JSON.parse(text)
+    } catch (e) {
+      console.error('StoryWorkflow JSON parse failed. Raw response head:', text.slice(0, 400))
+      throw new Error(
+        `Gemini returned non-JSON despite responseMimeType=application/json: ${(e as Error).message}`
+      )
+    }
+
+    const beats = Array.isArray(parsed.beats) ? parsed.beats.slice(0, 2) : []
+
+    return {
+      message: 'Workflow completed successfully',
+      PlanStory: {
+        story_title: parsed.story_title || 'Untitled',
+        story_logline: parsed.story_logline || '',
+        story_seed: parsed.story_seed || '',
+        beats,
+      },
+      GenerateVisuals: beats,
+    }
+  },
+}
+
+export interface BranchWorkflowInput {
+  sessionId?: string
+  currentBeatLabel?: string
+  storySeed?: string
+  previousBeats?: Array<{
+    label?: string
+    description?: string
+    selectedBranch?: string
+  }>
+}
+
+export interface BranchWorkflowResult {
+  message: string
+  GenerateNextBeat: unknown
+  GenerateNextVisuals: unknown
+  GenerateBranches: { branches: Array<{ label: string; outcome_hint: string }> }
 }
 
 export const BranchWorkflow = {
-  run: async (input: any) => {
-    const runner = new Runner({
-      appName: 'Storyception',
-      agent: BranchWorkflowAgent,
-      sessionService: new InMemorySessionService(),
-    })
-
+  async run(input: BranchWorkflowInput): Promise<BranchWorkflowResult> {
     const previous =
       Array.isArray(input.previousBeats) && input.previousBeats.length > 0
         ? input.previousBeats
             .map(
-              (b: {
-                label?: string
-                description?: string
-                selectedBranch?: string
-              }) =>
-                `- ${b.label ?? ''}: ${b.description ?? ''}` +
-                (b.selectedBranch
-                  ? ` (chosen path: ${b.selectedBranch})`
-                  : '')
+              (b, i) =>
+                `  Beat ${i + 1}: ${b.label ?? ''} — ${b.description ?? ''}` +
+                (b.selectedBranch ? ` (player chose: ${b.selectedBranch})` : '')
             )
             .join('\n')
-        : ''
+        : '  (no prior beats — this is the opening branch)'
 
-    const instructionContent = `
-      Start by using BranchNarrativeAgent to generate 2-3 branching options for the current story state.
-      Story context:\n${input.storySeed || '(none)'}
-      ${previous ? `Earlier beats:\n${previous}\n` : ''}
-      Current Beat: ${input.currentBeatLabel}
-      The user has not chosen a branch yet — propose distinct narrative paths only.
-      Respond with JSON containing a "branches" array; each item has "label" and "outcome_hint" (or "title" and "description").
-      Optionally continue with BranchVisualAgent for the next beat only if the flow naturally requires it.
-    `
+    const prompt = `Generate 2–3 distinct branching choices for the player at the current beat.
 
-    const generator = runner.runEphemeral({
-      userId: 'test-user',
-      newMessage: { role: 'user', parts: [{ text: instructionContent }] }
-    });
+Story context: ${input.storySeed || '(none)'}
+Current beat: ${input.currentBeatLabel || '(unspecified)'}
 
-    const events = [];
-    let finalContent = '';
-    for await (const event of generator) {
-      events.push(event);
-      if (event.type === 'content' && event.content?.parts?.[0]?.text) {
-        finalContent += event.content.parts[0].text;
+Earlier beats so far:
+${previous}
+
+Each branch is a meaningful narrative choice the player can take. Branches must feel distinct (different attitude, action, or risk profile) and align with the natural flow of this story. Return ONLY JSON matching the response schema.`
+
+    const model = getBranchNarrativeModel()
+    const ai = createGeminiClient()
+    const abortSignal = AbortSignal.timeout(STORY_TIMEOUT_MS)
+
+    const res = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        abortSignal,
+        temperature: 0.85,
+        maxOutputTokens: 1024,
+        responseMimeType: 'application/json',
+        responseSchema: BRANCH_RESPONSE_SCHEMA,
+        systemInstruction: SYSTEM_INSTRUCTION_BRANCH,
+      },
+    })
+
+    const text = (res.text ?? '').trim()
+    let parsed: { branches?: Array<{ label?: string; outcome_hint?: string }> } = {}
+    if (text) {
+      try {
+        parsed = JSON.parse(text)
+      } catch (e) {
+        console.error('BranchWorkflow JSON parse failed. Raw head:', text.slice(0, 300))
       }
     }
 
-    // Attempt to extract JSON from the agent's output
-    let parsedData: any = {};
-    try {
-      const jsonMatch = finalContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsedData = JSON.parse(jsonMatch[0]);
-      }
-    } catch (e) {
-      console.warn('Could not parse agent output as JSON');
-    }
+    const branches = Array.isArray(parsed.branches)
+      ? parsed.branches
+          .map((b, i) => ({
+            label: (b.label || `Path ${i + 1}`).toString(),
+            outcome_hint: (b.outcome_hint || '').toString(),
+          }))
+          .filter((b) => b.label || b.outcome_hint)
+      : []
 
-    const branches = normalizeWorkflowBranches(parsedData as Record<string, unknown>)
     const fallback =
       branches.length > 0
         ? branches
         : [
             { label: 'Direct confrontation', outcome_hint: 'Face the conflict head-on.' },
             { label: 'Seek another way', outcome_hint: 'Find a clever or hidden path forward.' },
-            {
-              label: 'Step back and observe',
-              outcome_hint: 'Gather information before committing.',
-            },
+            { label: 'Step back and observe', outcome_hint: 'Gather information before committing.' },
           ]
 
     return {
-      message: 'Branch Workflow completed successfully',
-      events: events,
-      GenerateNextBeat: parsedData,
-      GenerateNextVisuals: parsedData,
+      message: 'Branch workflow completed successfully',
+      GenerateNextBeat: parsed,
+      GenerateNextVisuals: parsed,
       GenerateBranches: { branches: fallback },
     }
   },
-};
+}

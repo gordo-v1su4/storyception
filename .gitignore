@@ -51,6 +51,8 @@ next-env.d.ts
 # Test outputs
 *.log
 coverage/
+test_output_*.png
+test_output_*.jpg
 
 # Lock files (keep bun.lock, ignore others)
 package-lock.json
