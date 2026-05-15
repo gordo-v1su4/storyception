@@ -2,10 +2,11 @@
  * Free the dev port if something is listening, then start `next dev` on that port.
  */
 import { execFileSync, spawn } from 'node:child_process'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const PORT = Number(process.env.PORT ?? 3000)
-const ROOT = join(import.meta.dir, '..')
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 function killListenersWindows(port: number) {
   // Dedupe PIDs (IPv4 + IPv6 rows); try/catch + exit 0 so cleanup never aborts `bun run dev`.

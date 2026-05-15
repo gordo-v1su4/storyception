@@ -61,7 +61,7 @@ export function calculateHierarchyLayout(
   let currentY = 0
 
   // Layout beats and their branches sequentially
-  beatNodes.forEach((beat, idx) => {
+  beatNodes.forEach((beat) => {
     // Position this beat
     positions.set(beat.id, {
       x: centerX,

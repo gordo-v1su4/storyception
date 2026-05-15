@@ -251,7 +251,7 @@ export function generateBranchOptions(parentBeat: StoryBeat): BranchOption[] {
     type: branch.type,
     selected: false,
     generatedIdea: branch.templates[Math.floor(Math.random() * branch.templates.length)],
-    imagePrompt: `Cinematic scene: ${branch.templates[0].toLowerCase()}`,
+    imagePrompt: `Cinematic scene after ${parentBeat.label}: ${branch.templates[0].toLowerCase()}`,
   }))
 }
 

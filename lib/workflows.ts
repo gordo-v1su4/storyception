@@ -267,7 +267,7 @@ Each branch is a meaningful narrative choice the player can take. Branches must 
     if (text) {
       try {
         parsed = JSON.parse(text)
-      } catch (e) {
+      } catch {
         console.error('BranchWorkflow JSON parse failed. Raw head:', text.slice(0, 300))
       }
     }
@@ -281,20 +281,25 @@ Each branch is a meaningful narrative choice the player can take. Branches must 
           .filter((b) => b.label || b.outcome_hint)
       : []
 
-    const fallback =
-      branches.length > 0
-        ? branches
-        : [
-            { label: 'Direct confrontation', outcome_hint: 'Face the conflict head-on.' },
-            { label: 'Seek another way', outcome_hint: 'Find a clever or hidden path forward.' },
-            { label: 'Step back and observe', outcome_hint: 'Gather information before committing.' },
-          ]
+    const defaultBranches = [
+      { label: 'Direct confrontation', outcome_hint: 'Face the conflict head-on.' },
+      { label: 'Seek another way', outcome_hint: 'Find a clever or hidden path forward.' },
+      { label: 'Step back and observe', outcome_hint: 'Gather information before committing.' },
+    ]
+    const generatedBranches = branches.length > 0 ? branches : defaultBranches
+
+    if (branches.length === 0) {
+      console.warn(
+        'BranchWorkflow used default branches because Gemini returned no usable branches.',
+        { hasText: text.length > 0, rawHead: text.slice(0, 300) }
+      )
+    }
 
     return {
       message: 'Branch workflow completed successfully',
       GenerateNextBeat: parsed,
       GenerateNextVisuals: parsed,
-      GenerateBranches: { branches: fallback },
+      GenerateBranches: { branches: generatedBranches },
     }
   },
 }

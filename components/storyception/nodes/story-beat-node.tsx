@@ -1,7 +1,7 @@
 "use client"
 
 import { memo, useState } from "react"
-import { Handle, Position, type NodeProps } from "@xyflow/react"
+import { Handle, Position } from "@xyflow/react"
 import { motion, AnimatePresence } from "framer-motion"
 import { GitBranch, ChevronDown, ImageIcon, Loader2, X, ChevronLeft, ChevronRight, Sparkles } from "lucide-react"
 import type { StoryBeat } from "@/lib/types"
@@ -13,7 +13,6 @@ interface StoryBeatNodeData {
   beat: StoryBeat
   isSelected: boolean
   isExpanded: boolean
-  isRevealing?: boolean  // Animation state for progressive reveal
   layout?: LayoutDirection
   onSelect: () => void
   onToggleBranch: () => void
@@ -21,7 +20,7 @@ interface StoryBeatNodeData {
 }
 
 export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
-  const { beat, isSelected, isExpanded, isRevealing = false, layout = "horizontal", onSelect, onToggleBranch } = data
+  const { beat, isSelected, isExpanded, layout = "horizontal", onSelect, onToggleBranch } = data
   const beatIndex = beat.id - 1
   const totalBeats = 15
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)

@@ -7,7 +7,8 @@
     "dev": "bun run scripts/dev.ts",
     "lint": "eslint .",
     "smoke": "bun run scripts/smoke-test-apis.ts",
-    "start": "next start -p 3000"
+    "start": "next start -p 3000",
+    "typecheck": "tsc -p tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "latest",
@@ -70,14 +71,18 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@tailwindcss/postcss": "^4.2.4",
     "@types/node": "^22.19.17",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "baseline-browser-mapping": "^2.10.25",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.9",
     "postcss": "^8.5.13",
     "tailwindcss": "^4.2.4",
     "tw-animate-css": "1.3.3",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.59.3"
   }
 }

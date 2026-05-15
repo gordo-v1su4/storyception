@@ -3,10 +3,10 @@
 import type React from "react"
 import { useState, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { X, Check, Upload, Sparkles, Plus, ImageIcon, Clapperboard } from "lucide-react"
+import { X, Check, Sparkles, Plus, ImageIcon, Clapperboard } from "lucide-react"
 import { archetypeCategories, archetypes, outcomes, beatStructures } from "@/lib/data"
 import type { StoryBeat } from "@/lib/types"
-import { getBeatPercentage, autoGenerateBeatIdea } from "@/lib/story-generator"
+import { getBeatPercentage } from "@/lib/story-generator"
 
 interface SetupPanelProps {
   onClose: () => void

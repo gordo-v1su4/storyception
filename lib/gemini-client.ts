@@ -25,7 +25,7 @@ function getProjectId(): string | undefined {
  * AND a project id (`GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_PROJECT_ID`). Requires ADC locally
  * (`gcloud auth application-default login`).
  */
-function useVertexProject(): boolean {
+function shouldUseVertexProject(): boolean {
   return (
     envFlagTrue('GOOGLE_GENAI_USE_VERTEXAI') &&
     envFlagTrue('GOOGLE_GENAI_VERTEX_USE_GCP_PROJECT') &&
@@ -41,12 +41,12 @@ function useVertexProject(): boolean {
  * Sends the key as `x-goog-api-key` to `generativelanguage.googleapis.com`. Both Vertex Express
  * keys (`AQ.*`) and AI Studio keys (`AIza*`) authenticate at this endpoint.
  *
- * Opt-in project mode: see {@link useVertexProject}.
+ * Opt-in project mode: see {@link shouldUseVertexProject}.
  *
  * @see https://googleapis.github.io/js-genai/
  */
 export function createGeminiClient(): GoogleGenAI {
-  if (useVertexProject()) {
+  if (shouldUseVertexProject()) {
     return new GoogleGenAI({
       vertexai: true,
       project: getProjectId()!,
@@ -73,7 +73,7 @@ export function createGeminiGlobalClient(): GoogleGenAI {
     ? { baseUrl, apiVersion: process.env.GEMINI_API_GLOBAL_VERSION?.trim() || undefined }
     : undefined
 
-  if (useVertexProject()) {
+  if (shouldUseVertexProject()) {
     return new GoogleGenAI({
       vertexai: true,
       project: getProjectId()!,

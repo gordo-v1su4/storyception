@@ -3,7 +3,7 @@
 import { memo } from "react"
 import { Handle, Position } from "@xyflow/react"
 import { motion } from "framer-motion"
-import { Check, Sparkles, ArrowRight, ImageIcon, Lock } from "lucide-react"
+import { Check, ArrowRight, ImageIcon, Lock } from "lucide-react"
 import type { BranchOption } from "@/lib/types"
 import { getBranchColorSet } from "@/lib/colors"
 

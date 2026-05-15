@@ -4,7 +4,8 @@
  * Usage: bun run scripts/test-image-gen.ts ["prompt text"]
  */
 import { writeFileSync, existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 function loadEnvFile(path: string) {
   if (!existsSync(path)) return
@@ -22,7 +23,7 @@ function loadEnvFile(path: string) {
   }
 }
 
-const ROOT = join(import.meta.dir, '..')
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 loadEnvFile(join(ROOT, '.env.local'))
 loadEnvFile(join(ROOT, '.env'))
 

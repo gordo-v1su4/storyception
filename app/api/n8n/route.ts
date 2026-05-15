@@ -17,9 +17,6 @@ import { NextRequest, NextResponse } from 'next/server'
 const N8N_BASE_URL = process.env.N8N_BASE_URL || 'https://n8n.v1su4.dev'
 const N8N_API_KEY = process.env.N8N_API_KEY || ''
 
-// Existing webhook path from Story-ception Master Automation
-const N8N_WEBHOOK_VISION = '/webhook/nocodb-image-trigger'
-
 // Helper to make authenticated requests to n8n
 async function n8nFetch(endpoint: string, options: RequestInit = {}) {
   const url = `${N8N_BASE_URL}${endpoint}`
@@ -50,7 +47,7 @@ export async function GET(request: NextRequest) {
     switch (action) {
       case 'health':
         // Check n8n connectivity
-        const health = await n8nFetch('/api/v1/workflows?limit=1')
+        await n8nFetch('/api/v1/workflows?limit=1')
         return NextResponse.json({ 
           status: 'connected',
           instance: N8N_BASE_URL,

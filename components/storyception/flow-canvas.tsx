@@ -13,9 +13,9 @@ import {
   type Connection,
   type Node,
   type Edge,
+  type NodeTypes,
   MarkerType,
   Panel,
-  Position,
   ConnectionLineType,
   ReactFlowProvider,
 } from "@xyflow/react"
@@ -31,8 +31,7 @@ import { calculateHierarchyLayout } from "@/lib/use-hierarchy-layout"
 import { archetypes } from "@/lib/data"
 
 // Custom node types
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const nodeTypes: Record<string, any> = {
+const nodeTypes: NodeTypes = {
   storyBeat: StoryBeatNode,
   branch: BranchNode,
 }
@@ -44,7 +43,6 @@ interface FlowCanvasProps {
   selectedBeatId: number | null
   onSelectBeat: (id: number | null) => void
   onUpdateBeat: (id: number, updates: Partial<StoryBeat>) => void
-  onAddBeat?: (beat: StoryBeat, afterBeatId: number) => void
   referenceImageUrl?: string | null
   sessionId?: string | null
   archetypeIndex?: number
@@ -71,15 +69,12 @@ const defaultEdgeOptions = {
 }
 
 // Inner component that has access to useReactFlow
-function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, onAddBeat, referenceImageUrl, sessionId, archetypeIndex = 0, storyTitle = '', storyLogline = '', storySeed = '', outcomeName = '' }: FlowCanvasProps) {
+function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, referenceImageUrl, sessionId, archetypeIndex = 0, storyTitle = '', storyLogline = '', storySeed = '', outcomeName = '' }: FlowCanvasProps) {
   const [expandedBranches, setExpandedBranches] = useState<Set<number>>(new Set())
   const [layout, setLayout] = useState<LayoutDirection>("vertical") // Vertical = top-to-bottom flow
   const [locked, setLocked] = useState(false)
   const [autoLayout, setAutoLayout] = useState(true)
   const [revealedBeats, setRevealedBeats] = useState(1) // Progressive reveal - start with 1 beat
-  const [generatingBeatId, setGeneratingBeatId] = useState<number | null>(null) // Track which beat is generating images
-  
-  const [selectedBranchPaths, setSelectedBranchPaths] = useState<Map<string, BranchOption>>(new Map())
   const { fitView, setCenter, getZoom } = useReactFlow()
   const layoutTimeoutRef = useRef<NodeJS.Timeout>(undefined)
   const isInitialMount = useRef(true) // Track first render to only fitView once
@@ -180,8 +175,6 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
 
   // Handle branch selection - progressively generate next beat content + images, then reveal
   const handleSelectBranch = useCallback(async (beatId: number, branch: BranchOption) => {
-    const pathKey = `${beatId}-${branch.id}`
-
     // 1. Update the current beat to show branch selection
     onUpdateBeat(beatId, {
       selectedBranchId: branch.id,
@@ -191,8 +184,6 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
       }))
     })
 
-    setSelectedBranchPaths(prev => new Map(prev).set(pathKey, branch))
-
     // 2. Find the next beat
     const beatIndex = beats.findIndex(b => b.id === beatId)
     if (beatIndex < 0 || beatIndex + 1 >= beats.length) return
@@ -201,7 +192,6 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
     const branchContext = { title: branch.title, description: branch.desc || '' }
 
     // 3. Mark next beat as generating
-    setGeneratingBeatId(nextBeat.id)
     onUpdateBeat(nextBeat.id, { status: 'generating' })
 
     // 4. If next beat is a skeleton, generate its content first via progressive beat endpoint
@@ -298,8 +288,6 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
       console.warn(`⚠️ No keyframes generated for beat ${nextBeat.id} after branch selection`)
       onUpdateBeat(nextBeat.id, { status: 'ready' })
     }
-
-    setGeneratingBeatId(null)
 
     // 7. Reveal the next beat
     setRevealedBeats(prev => Math.max(prev, beatIndex + 2))
@@ -584,7 +572,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
     }
 
     return { nodes, edges }
-  }, [beats, selectedBeatId, expandedBranches, layout, locked, autoLayout, revealedBeats, getNodePosition, onSelectBeat, onUpdateBeat, toggleBranch, handleSelectBranch])
+  }, [beats, selectedBeatId, expandedBranches, layout, locked, autoLayout, revealedBeats, getNodePosition, onSelectBeat, onUpdateBeat, toggleBranch, handleSelectBranch, archetypeIndex, sessionId, storyLogline, storyTitle])
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
@@ -643,7 +631,6 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
         console.log('🎬 Auto-generating keyframes for opening beat...')
         
         // Mark as generating and trigger generation
-        setGeneratingBeatId(firstBeat.id)
         onUpdateBeat(firstBeat.id, { status: 'generating' })
         
         generateKeyframes(firstBeat).then(keyframes => {
@@ -653,7 +640,6 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, on
           } else {
             onUpdateBeat(firstBeat.id, { status: 'ready' })
           }
-          setGeneratingBeatId(null)
         })
       } else {
         hasGeneratedFirstBeat.current = true // Already has frames

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { GitBranch, Pencil, Sparkles, ChevronDown, ArrowDown, Check } from "lucide-react"
 import { BranchPanel } from "./branch-panel"
-import type { StoryBeat, BranchOption } from "@/lib/types"
+import type { StoryBeat } from "@/lib/types"
 import { generateBeatIdea } from "@/lib/story-generator"
 
 interface StoryCanvasProps {
@@ -36,7 +36,7 @@ export function StoryCanvas({ beats, selectedBeatId, onSelectBeat, onUpdateBeat 
     }, 800)
   }
 
-  const handleSelectBranch = (beatId: number, branchId: number, branch: BranchOption) => {
+  const handleSelectBranch = (beatId: number, branchId: number) => {
     onUpdateBeat(beatId, {
       selectedBranchId: branchId,
       branches: beats.find((b) => b.id === beatId)?.branches?.map((b) => ({ ...b, selected: b.id === branchId })),
@@ -296,7 +296,7 @@ export function StoryCanvas({ beats, selectedBeatId, onSelectBeat, onUpdateBeat 
                       parentBeat={beat}
                       nextBeat={beats[idx + 1]}
                       onClose={() => setExpandedBeat(null)}
-                      onSelectBranch={(branchId, branch) => handleSelectBranch(beat.id, branchId, branch)}
+                      onSelectBranch={(branchId) => handleSelectBranch(beat.id, branchId)}
                       onUndoBranch={() => handleUndoBranch(beat.id)}
                     />
                   )}

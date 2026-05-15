@@ -207,7 +207,7 @@ export async function bulkCreateKeyframes(
  * Until then, they live in the local file store regardless of the main backend
  * mode (so the app works the moment you create the table — no other changes).
  */
-async function useCharactersInNoco(): Promise<boolean> {
+async function shouldStoreCharactersInNoco(): Promise<boolean> {
   return (await getMode()) === 'nocodb' && !!v3.TABLES.characters
 }
 
@@ -223,13 +223,13 @@ export async function createCharacter(character: {
   lookLabel?: string
   megaPrompt?: string
 }): Promise<CharacterRecord> {
-  return (await useCharactersInNoco())
+  return (await shouldStoreCharactersInNoco())
     ? v3.createCharacterV3(character)
     : local.createCharacterLocal(character)
 }
 
 export async function getCharactersForSession(sessionId: string): Promise<CharacterRecord[]> {
-  return (await useCharactersInNoco())
+  return (await shouldStoreCharactersInNoco())
     ? v3.getCharactersForSessionV3(sessionId)
     : local.getCharactersForSessionLocal(sessionId)
 }
@@ -247,7 +247,7 @@ export async function updateCharacter(
     megaPrompt: string
   }>
 ): Promise<CharacterRecord> {
-  return (await useCharactersInNoco())
+  return (await shouldStoreCharactersInNoco())
     ? v3.updateCharacterV3(characterId, updates)
     : local.updateCharacterLocal(characterId, updates)
 }

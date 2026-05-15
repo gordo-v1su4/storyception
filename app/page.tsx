@@ -7,14 +7,13 @@ import { StoryOpeningPanel } from "@/components/storyception/story-opening-panel
 import { StoryCanvas } from "@/components/storyception/story-canvas"
 import { FlowCanvas } from "@/components/storyception/flow-canvas"
 import { Timeline } from "@/components/storyception/timeline"
-import type { StoryBeat, StoryHistory } from "@/lib/types"
+import type { StoryBeat } from "@/lib/types"
 
 export default function StoryceptionPage() {
   const [storyBeats, setStoryBeats] = useState<StoryBeat[]>([])
   const [showModal, setShowModal] = useState(false) // Start false, show after checking for session
   const [isLoading, setIsLoading] = useState(true) // Loading state for session check
   const [selectedBeatId, setSelectedBeatId] = useState<number | null>(null)
-  const [history, setHistory] = useState<StoryHistory[]>([])
   const [viewMode, setViewMode] = useState<"flow" | "cards">("flow")
   const [sessionId, setSessionId] = useState<string | null>(null)
 
@@ -90,7 +89,6 @@ export default function StoryceptionPage() {
 
           setStoryBeats(beats)
           setSessionId(savedSessionId)
-          setHistory([{ beats, timestamp: Date.now(), action: "Loaded from session" }])
 
           // Restore progressive generation state from session data
           if (data.storyData?.storySeed) setStorySeed(data.storyData.storySeed)
@@ -122,7 +120,6 @@ export default function StoryceptionPage() {
     setShowModal(false)
     setCurrentBeatIndex(0)
     setArchetypeIndex(archIdx)
-    setHistory([{ beats, timestamp: Date.now(), action: "Initial generation" }])
     if (refImageUrl) setReferenceImageUrl(refImageUrl)
     if (storyId) setSessionId(storyId)
     if (title) setStoryTitle(title)
@@ -141,16 +138,7 @@ export default function StoryceptionPage() {
 
   const handleUpdateBeat = useCallback((id: number, updates: Partial<StoryBeat>) => {
     setStoryBeats((prev) => {
-      const newBeats = prev.map((beat) => (beat.id === id ? { ...beat, ...updates } : beat))
-      setHistory((h) => [
-        ...h.slice(-9),
-        {
-          beats: newBeats,
-          timestamp: Date.now(),
-          action: `Updated ${prev.find((b) => b.id === id)?.label || "beat"}`,
-        },
-      ])
-      return newBeats
+      return prev.map((beat) => (beat.id === id ? { ...beat, ...updates } : beat))
     })
   }, [])
 

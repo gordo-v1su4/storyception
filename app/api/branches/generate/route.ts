@@ -16,7 +16,7 @@ import { generateBranchesWithGemini } from '@/lib/branch-generation-gemini'
 const N8N_BASE_URL = process.env.N8N_BASE_URL || 'https://n8n.v1su4.dev'
 const N8N_WEBHOOK_BRANCH = process.env.N8N_WEBHOOK_BRANCH_GENERATE || '/webhook/branch-generate'
 
-function useN8nForBranches(): boolean {
+function shouldUseN8nForBranches(): boolean {
   return process.env.STORYCEPTION_BRANCH_USE_N8N?.trim() === '1'
 }
 
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
       generatedAt: new Date().toISOString(),
     }
 
-    if (!useN8nForBranches()) {
+    if (!shouldUseN8nForBranches()) {
       const { branches: rows } = await generateBranchesWithGemini({
         beatId: body.beatId,
         beatLabel: body.beatLabel || 'Beat',
