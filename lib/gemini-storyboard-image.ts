@@ -45,7 +45,6 @@ export function buildStoryboardImageGenerationConfig(
     imageConfig: {
       aspectRatio: '16:9',
       imageSize: '4K',
-      outputMimeType: 'image/png',
     },
     abortSignal: overrides?.abortSignal,
   }

@@ -54,23 +54,6 @@ function normalizeKeyframePrompts(
   )
 }
 
-async function resolveOneReferenceImage(value: string): Promise<StoryboardReferenceImagePart> {
-  const trimmed = value.trim()
-  const fromDataUrl = parseDataUrlBase64(trimmed)
-  if (fromDataUrl) return fromDataUrl
-  if (/^https?:\/\//i.test(trimmed)) {
-    const res = await fetch(trimmed)
-    if (!res.ok) {
-      throw new Error(`Failed to fetch reference image: ${res.status}`)
-    }
-    const buf = Buffer.from(await res.arrayBuffer())
-    const ct = res.headers.get('content-type') || 'image/jpeg'
-    const mime = ct.split(';')[0]?.trim() || 'image/jpeg'
-    return { mimeType: mimeMatch(mime) ? mime : 'image/jpeg', base64: buf.toString('base64') }
-  }
-  return { mimeType: 'image/png', base64: trimmed }
-}
-
 async function resolveReferenceImageParts(body: {
   referenceImageBase64?: string
   referenceImageUrl?: string
