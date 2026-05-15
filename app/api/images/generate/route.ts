@@ -54,6 +54,23 @@ function normalizeKeyframePrompts(
   )
 }
 
+async function resolveOneReferenceImage(value: string): Promise<StoryboardReferenceImagePart> {
+  const trimmed = value.trim()
+  const fromDataUrl = parseDataUrlBase64(trimmed)
+  if (fromDataUrl) return fromDataUrl
+  if (/^https?:\/\//i.test(trimmed)) {
+    const res = await fetch(trimmed)
+    if (!res.ok) {
+      throw new Error(`Failed to fetch reference image: ${res.status}`)
+    }
+    const buf = Buffer.from(await res.arrayBuffer())
+    const ct = res.headers.get('content-type') || 'image/jpeg'
+    const mime = ct.split(';')[0]?.trim() || 'image/jpeg'
+    return { mimeType: mimeMatch(mime) ? mime : 'image/jpeg', base64: buf.toString('base64') }
+  }
+  return { mimeType: 'image/png', base64: trimmed }
+}
+
 async function resolveReferenceImageParts(body: {
   referenceImageBase64?: string
   referenceImageUrl?: string
@@ -144,7 +161,6 @@ export async function POST(request: NextRequest) {
       beatLabel: typeof beatLabel === 'string' ? beatLabel : undefined,
       beatDescription: typeof beatDescription === 'string' ? beatDescription : undefined,
     })
-
     const referenceParts = await resolveReferenceImageParts({
       referenceImageBase64,
       referenceImageUrl,
@@ -158,7 +174,7 @@ export async function POST(request: NextRequest) {
 
     const referenceNote =
       referenceParts.length > 1
-        ? ' Use the first reference as the original tone/composition anchor; use any following clean look sheets and annotated character sheets as locked identity references for character continuity.'
+        ? ' Use the ordered references as locked visual continuity anchors: original uploaded references first, then clean look sheets, then annotated character sheets.'
         : ' Use the provided reference image as the tone, composition, and identity anchor.'
     const imagePrompt = `Transform the provided reference imagery into a cinematic sequence of 9 keyframes arranged in a 3x3 grid.${referenceNote}${branchNote} Keyframes: ${prompts.join(' | ')}`
 

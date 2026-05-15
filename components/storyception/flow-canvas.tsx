@@ -22,8 +22,10 @@ import {
 import "@xyflow/react/dist/style.css"
 import { StoryBeatNode } from "./nodes/story-beat-node"
 import { BranchNode } from "./nodes/branch-node"
+import { CharacterCard } from "./character-card"
 // Branch generation is now on-demand via /api/story/branches
 import type { StoryBeat, BranchOption } from "@/lib/types"
+import type { CharacterRecord } from "@/lib/storyception-schema"
 import { motion } from "framer-motion"
 import { ArrowRight, ArrowDown, Move, RotateCcw, Lock, Unlock, Wand2, Eye, EyeOff } from "lucide-react"
 import { getBeatHexColor, BRANCH_COLORS } from "@/lib/colors"
@@ -44,6 +46,8 @@ interface FlowCanvasProps {
   onSelectBeat: (id: number | null) => void
   onUpdateBeat: (id: number, updates: Partial<StoryBeat>) => void
   referenceImageUrl?: string | null
+  referenceImages?: string[]
+  characters?: CharacterRecord[]
   sessionId?: string | null
   archetypeIndex?: number
   storyTitle?: string
@@ -69,7 +73,7 @@ const defaultEdgeOptions = {
 }
 
 // Inner component that has access to useReactFlow
-function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, referenceImageUrl, sessionId, archetypeIndex = 0, storyTitle = '', storyLogline = '', storySeed = '', outcomeName = '' }: FlowCanvasProps) {
+function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, referenceImageUrl, referenceImages = [], characters = [], sessionId, archetypeIndex = 0, storyTitle = '', storyLogline = '', storySeed = '', outcomeName = '' }: FlowCanvasProps) {
   const [expandedBranches, setExpandedBranches] = useState<Set<number>>(new Set())
   const [layout, setLayout] = useState<LayoutDirection>("vertical") // Vertical = top-to-bottom flow
   const [locked, setLocked] = useState(false)
@@ -79,6 +83,20 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
   const layoutTimeoutRef = useRef<NodeJS.Timeout>(undefined)
   const isInitialMount = useRef(true) // Track first render to only fitView once
   const prevRevealedBeats = useRef(revealedBeats) // Track previous to detect reveals
+  const keyframeReferenceImages = useMemo(() => {
+    const ordered = [
+      ...referenceImages,
+      ...(referenceImageUrl ? [referenceImageUrl] : []),
+      ...characters.flatMap((character) => {
+        if (character.kind !== 'character') return []
+        return [character.look_sheet_image_url, character.sheet_image_url].filter(
+          (url): url is string => typeof url === 'string' && url.trim().length > 0
+        )
+      }),
+    ]
+    return Array.from(new Set(ordered.map((url) => url.trim()).filter(Boolean)))
+  }, [characters, referenceImageUrl, referenceImages])
+
 
   // Calculate node positions based on layout (fallback for manual positioning)
   const getNodePosition = useCallback((idx: number, level: number = 0) => {
@@ -126,8 +144,8 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
   // Generate keyframes for a beat using the on-demand image generation API
   // branchContext: optional context from the selected branch that leads INTO this beat
   const generateKeyframes = useCallback(async (beat: StoryBeat, branchContext?: { title: string; description: string }): Promise<string[] | null> => {
-    if (!sessionId || !referenceImageUrl) {
-      console.log('⚠️ No session ID or reference image, skipping keyframe generation')
+    if (!sessionId || keyframeReferenceImages.length === 0) {
+      console.log('⚠️ No session ID or reference images, skipping keyframe generation')
       return null
     }
 
@@ -140,7 +158,8 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
         body: JSON.stringify({
           sessionId,
           beatId: beat.beatId || `beat-${beat.id}`,
-          referenceImageUrl,
+          referenceImageUrl: keyframeReferenceImages[0],
+          referenceImages: keyframeReferenceImages,
           keyframePrompts: beat.keyframePrompts ?? [],
           beatLabel: beat.label,
           beatDescription: beat.desc || beat.generatedIdea || '',
@@ -171,7 +190,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
       console.error('Keyframe generation error:', error)
       return null
     }
-  }, [sessionId, referenceImageUrl])
+  }, [sessionId, keyframeReferenceImages])
 
   // Handle branch selection - progressively generate next beat content + images, then reveal
   const handleSelectBranch = useCallback(async (beatId: number, branch: BranchOption) => {
@@ -299,6 +318,25 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
 
     const nodes: Node[] = []
     const edges: Edge[] = []
+
+    const visibleCharacters = characters.filter((character) => character.kind === 'character')
+    visibleCharacters.forEach((character, idx) => {
+      nodes.push({
+        id: `character-${character.character_id}`,
+        type: 'default',
+        position: { x: idx * 340, y: -360 },
+        draggable: !locked,
+        selectable: true,
+        data: { label: <CharacterCard character={character} /> },
+        style: {
+          width: 300,
+          padding: 0,
+          border: 'none',
+          background: 'transparent',
+          boxShadow: 'none',
+        },
+      })
+    })
     
     // Only show revealed beats (progressive reveal)
     const visibleBeats = beats.slice(0, revealedBeats)
@@ -502,6 +540,30 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
       }
     })
 
+    if (visibleCharacters.length > 0) {
+      nodes.push({
+        id: 'characters-lane-label',
+        type: 'default',
+        position: { x: -260, y: -300 },
+        draggable: false,
+        selectable: false,
+        data: { label: 'Characters' },
+        style: {
+          width: 180,
+          border: '1px solid rgba(167, 139, 250, 0.35)',
+          background: 'rgba(24, 24, 27, 0.9)',
+          color: '#c4b5fd',
+          borderRadius: 14,
+          padding: '12px 16px',
+          fontSize: 12,
+          fontWeight: 700,
+          letterSpacing: '0.16em',
+          textTransform: 'uppercase',
+          textAlign: 'center',
+        },
+      })
+    }
+
     // Add "teaser" node if there are more beats to reveal
     if (hasMoreBeats && visibleBeats.length > 0) {
       const lastVisibleBeat = visibleBeats[visibleBeats.length - 1]
@@ -559,11 +621,22 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
         branchHorizontalSpacing: 350,   // Space between branches
         branchGap: 80,                  // Gap below branches to next beat
       }
+      const layoutNodes = nodes.filter(node => !node.id.startsWith('character') && node.id !== 'characters-lane-label')
+      const positions = calculateHierarchyLayout(layoutNodes, edges, layoutOptions)
+      const topBeatY = Math.min(...Array.from(positions.values()).map(pos => pos.y), 0)
+      const characterY = topBeatY - 360
       
-      const positions = calculateHierarchyLayout(nodes, edges, layoutOptions)
-      
-      // Apply calculated positions to nodes
+      // Apply calculated positions to story nodes while keeping the Characters lane above beats
       nodes.forEach(node => {
+        if (node.id.startsWith('character-')) {
+          const index = visibleCharacters.findIndex((character) => `character-${character.character_id}` === node.id)
+          node.position = { x: Math.max(0, index) * 340, y: characterY }
+          return
+        }
+        if (node.id === 'characters-lane-label') {
+          node.position = { x: -260, y: characterY + 56 }
+          return
+        }
         const pos = positions.get(node.id)
         if (pos) {
           node.position = pos
@@ -572,7 +645,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
     }
 
     return { nodes, edges }
-  }, [beats, selectedBeatId, expandedBranches, layout, locked, autoLayout, revealedBeats, getNodePosition, onSelectBeat, onUpdateBeat, toggleBranch, handleSelectBranch, archetypeIndex, sessionId, storyLogline, storyTitle])
+  }, [beats, selectedBeatId, expandedBranches, layout, locked, autoLayout, revealedBeats, getNodePosition, onSelectBeat, onUpdateBeat, toggleBranch, handleSelectBranch, archetypeIndex, sessionId, storyLogline, storyTitle, characters])
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
@@ -727,6 +800,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
         <MiniMap
           className="!bg-zinc-900 !border-zinc-700 !rounded-lg"
           nodeColor={(node) => {
+            if (node.id.startsWith("character-")) return "#8b5cf6"
             if (node.type === "branch") {
               // Get branch index from node id
               const match = node.id.match(/branch-\d+-(\d+)/)
