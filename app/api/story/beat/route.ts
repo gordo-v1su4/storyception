@@ -17,6 +17,7 @@ import {
 import { createGeminiClient } from '@/lib/gemini-client'
 import { GEMINI_MODEL_PRO } from '@/lib/gemini-models'
 import { getGeminiApiKey } from '@/lib/gemini-api-key'
+import type { CharacterRecord } from '@/lib/storyception-schema'
 
 export interface ProgressiveBeatRequest {
   sessionId: string
@@ -39,6 +40,7 @@ export interface ProgressiveBeatRequest {
     description: string
     selectedBranch?: string
   }>
+  characters?: CharacterRecord[]
 }
 
 export interface ProgressiveBeatResponse {
@@ -64,14 +66,27 @@ export async function POST(request: NextRequest) {
     const {
       sessionId, beatId, beatIndex, beatLabel, beatStructureDesc,
       archetypeName, outcomeName, storyTitle, storyLogline, storySeed,
-      selectedBranch, previousBeats,
+      selectedBranch, previousBeats, characters,
     } = body
 
-    const storyContext = previousBeats.map((b, i) => {
+    const storyContext = (Array.isArray(previousBeats) ? previousBeats : []).map((b, i) => {
       let line = `  Beat ${i + 1}: ${b.label} - ${b.description}`
       if (b.selectedBranch) line += ` [Player chose: ${b.selectedBranch}]`
       return line
     }).join('\n')
+
+    const storyCharacters = Array.isArray(characters)
+      ? characters.filter((character) => character.kind === 'character')
+      : []
+    const characterContext = storyCharacters.length > 0
+      ? `\nConfirmed character continuity references:\n${storyCharacters
+          .map((character, i) => {
+            const descriptor = character.descriptor?.trim() || 'no descriptor provided'
+            const look = character.look_label?.trim() || 'Default'
+            return `  ${i + 1}. ${character.name} — ${descriptor}. Look: ${look}. Preserve this identity and wardrobe continuity.`
+          })
+          .join('\n')}`
+      : ''
 
     const prompt = `You are an expert screenwriter continuing an interactive story.
 
@@ -82,7 +97,7 @@ STRUCTURE: ${archetypeName}
 DESIRED OUTCOME: ${outcomeName}
 
 STORY SO FAR:
-${storyContext || '  (This is the beginning of the story)'}
+${storyContext || '  (This is the beginning of the story)'}${characterContext}
 
 THE PLAYER JUST CHOSE: "${selectedBranch.title}"
 ${selectedBranch.description}
@@ -94,12 +109,13 @@ Structure role: ${beatStructureDesc}
 Requirements:
 1. The scene MUST continue directly from the player's branch choice — the branch decision should have clear narrative consequences
 2. Write a vivid scene description (2-3 sentences) that advances the story
-3. Generate exactly 9 keyframe prompts for a 3x3 cinematic grid following this shot progression:
+3. Include named characters from the character list when they are relevant, using the exact names and descriptors provided.
+4. Generate exactly 9 keyframe prompts for a 3x3 cinematic grid following this shot progression:
    - KF1: Wide establishing shot
    - KF2: Medium shot introducing characters
    - KF3: Close-up on protagonist's face/emotion
    - KF4: Action or movement shot
-   - KF5: Central dramatic moment (center of grid)
+   - KF5: Central dramatic moment
    - KF6: Reaction shot
    - KF7: Environmental detail or symbol
    - KF8: Character interaction

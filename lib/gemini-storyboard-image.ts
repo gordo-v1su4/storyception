@@ -10,6 +10,24 @@ import {
 import { createGeminiClient } from './gemini-client'
 import { GEMINI_MODEL_IMAGE } from './gemini-models'
 
+export interface StoryboardReferenceImagePart {
+  mimeType: string
+  base64: string
+}
+
+type GenerateStoryboardParams =
+  | {
+      referenceImages: StoryboardReferenceImagePart[]
+      prompt: string
+      abortSignal?: AbortSignal
+    }
+  | {
+      referenceMimeType: string
+      referenceBase64: string
+      prompt: string
+      abortSignal?: AbortSignal
+    }
+
 export function buildStoryboardImageGenerationConfig(
   overrides?: Pick<GenerateContentConfig, 'abortSignal' | 'maxOutputTokens'>
 ): GenerateContentConfig {
@@ -26,7 +44,7 @@ export function buildStoryboardImageGenerationConfig(
     ],
     imageConfig: {
       aspectRatio: '16:9',
-      imageSize: '2K',
+      imageSize: '4K',
       outputMimeType: 'image/png',
     },
     abortSignal: overrides?.abortSignal,
@@ -35,18 +53,23 @@ export function buildStoryboardImageGenerationConfig(
 
 /**
  * Single 3x3 storyboard grid as base64 (PNG), matching Colab native image flow.
+ * Supports the legacy single-reference call shape and v1 multi-reference contract.
  */
-export async function generateStoryboardGridBase64(params: {
-  referenceMimeType: string
-  referenceBase64: string
-  prompt: string
-  abortSignal?: AbortSignal
-}): Promise<string> {
+export async function generateStoryboardGridBase64(params: GenerateStoryboardParams): Promise<string> {
+  const referenceImages =
+    'referenceImages' in params
+      ? params.referenceImages
+      : [{ mimeType: params.referenceMimeType, base64: params.referenceBase64 }]
+
+  if (referenceImages.length === 0) {
+    throw new Error('At least one reference image is required')
+  }
+
   const ai = createGeminiClient()
   const res = await ai.models.generateContent({
     model: GEMINI_MODEL_IMAGE,
     contents: createUserContent([
-      createPartFromBase64(params.referenceBase64, params.referenceMimeType),
+      ...referenceImages.map((image) => createPartFromBase64(image.base64, image.mimeType)),
       createPartFromText(params.prompt),
     ]),
     config: buildStoryboardImageGenerationConfig({ abortSignal: params.abortSignal }),

@@ -9,13 +9,22 @@ import {
   generateBeatId,
   generateKeyframeId,
   getPersistenceMode,
+  getSession,
 } from '@/lib/nocodb'
 import { archetypes, beatStructures } from '@/lib/data'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { archetypeIndex, archetypeName, outcomeName, referenceImages, referenceAssets } = body
+    const {
+      archetypeIndex,
+      archetypeName,
+      outcomeName,
+      referenceImages,
+      referenceAssets,
+      characters,
+      sessionId: requestedSessionId,
+    } = body
 
     // 1. Run the StoryWorkflow
     const beatsDefForPrompt = beatStructures[archetypeIndex] || []
@@ -23,13 +32,17 @@ export async function POST(request: NextRequest) {
       archetypeName,
       outcomeName,
       referenceImages,
+      characters: Array.isArray(characters) ? characters : [],
       beatLabels: beatsDefForPrompt.map((b: { label: string }) => b.label),
     })
 
     const storyData = workflowResult.PlanStory
     const visualData = workflowResult.GenerateVisuals
 
-    const sessionId = generateSessionId()
+    const sessionId =
+      typeof requestedSessionId === 'string' && requestedSessionId.trim()
+        ? requestedSessionId.trim()
+        : generateSessionId()
     const beatsDef = beatsDefForPrompt
 
     const allBeats = beatsDef.map((beatDef: { label: string }, index: number) => {
@@ -66,16 +79,19 @@ export async function POST(request: NextRequest) {
     let persisted = false
 
     try {
-      await createSession({
-        sessionId,
-        archetype: archetypeName,
-        outcome: outcomeName,
-        referenceImageUrl: referenceImages?.[0],
-        referenceImageBucket: referenceAssets?.[0]?.bucket,
-        referenceImageObjectKey: referenceAssets?.[0]?.objectKey,
-        referenceStorageProvider: referenceAssets?.[0] ? 'rustfs' : undefined,
-        totalBeats: beatsDef.length
-      })
+      const existingSession = await getSession(sessionId)
+      if (!existingSession) {
+        await createSession({
+          sessionId,
+          archetype: archetypeName,
+          outcome: outcomeName,
+          referenceImageUrl: referenceImages?.[0],
+          referenceImageBucket: referenceAssets?.[0]?.bucket,
+          referenceImageObjectKey: referenceAssets?.[0]?.objectKey,
+          referenceStorageProvider: referenceAssets?.[0] ? 'rustfs' : undefined,
+          totalBeats: beatsDef.length
+        })
+      }
 
       await updateSession(sessionId, {
         storyData: JSON.stringify({
@@ -124,6 +140,7 @@ export async function POST(request: NextRequest) {
       logline: storyData.story_logline,
       storySeed: storyData.story_seed,
       beats: allBeats,
+      characters: Array.isArray(characters) ? characters : [],
       persistenceBackend: getPersistenceMode(),
       ...(persisted ? {} : { persisted: false }),
     })

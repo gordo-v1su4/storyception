@@ -16,6 +16,7 @@ import './adk-env'
 import { Type } from '@google/genai'
 import { createGeminiClient } from './gemini-client'
 import { getBranchNarrativeModel, getInitialStoryNarrativeModel } from './gemini-models'
+import type { CharacterRecord } from './storyception-schema'
 
 const STORY_TIMEOUT_MS =
   Number.parseInt(process.env.GEMINI_TIMEOUT_MS ?? '', 10) || 90_000
@@ -109,6 +110,7 @@ export interface StoryWorkflowInput {
   referenceImageUrl?: string
   referenceImages?: string[]
   beatLabels?: string[]
+  characters?: CharacterRecord[]
 }
 
 export interface StoryWorkflowResult {
@@ -120,6 +122,19 @@ export interface StoryWorkflowResult {
     beats: PlannedBeat[]
   }
   GenerateVisuals: PlannedBeat[]
+}
+
+export function buildCharacterContextBlock(characters?: CharacterRecord[]): string {
+  const storyCharacters = (characters ?? []).filter((character) => character.kind === 'character')
+  if (storyCharacters.length === 0) return ''
+
+  return `\nConfirmed character continuity references:\n${storyCharacters
+    .map((character, i) => {
+      const descriptor = character.descriptor?.trim() || 'no descriptor provided'
+      const look = character.look_label?.trim() || 'Default'
+      return `  ${i + 1}. ${character.name} — ${descriptor}. Look: ${look}. Use this exact name and preserve identity/wardrobe continuity in scene descriptions and keyframe prompts.`
+    })
+    .join('\n')}`
 }
 
 export const StoryWorkflow = {
@@ -137,10 +152,12 @@ export const StoryWorkflow = {
           .join('\n')}`
       : ''
 
+    const characterContext = buildCharacterContextBlock(input.characters)
+
     const prompt = `Plan the opening of an interactive cinematic short.
 
 Archetype: ${input.archetypeName}
-Target outcome: ${input.outcomeName}${beatLabelsLine}${referenceLine}
+Target outcome: ${input.outcomeName}${beatLabelsLine}${referenceLine}${characterContext}
 
 Write:
 1. A short, evocative story_title.
@@ -149,6 +166,7 @@ Write:
 4. The first 2 beats. For each beat provide a vivid scene_description and exactly 9 keyframe_prompts following this cinematic order:
    KF1 Wide establishing shot · KF2 Medium introducing characters · KF3 Close-up on protagonist · KF4 Action / movement · KF5 Central dramatic moment · KF6 Reaction · KF7 Environmental detail · KF8 Character interaction · KF9 Closing moment.
    Each keyframe_prompt is 30–50 words and includes camera angle, lighting, character action, atmosphere.
+${characterContext ? '5. When confirmed characters are relevant, mention them by name and carry their descriptors consistently across both scene_description and keyframe_prompts.\n' : ''}
 
 Respond ONLY with JSON matching the response schema.`
 
@@ -208,6 +226,7 @@ export interface BranchWorkflowInput {
   sessionId?: string
   currentBeatLabel?: string
   storySeed?: string
+  characters?: CharacterRecord[]
   previousBeats?: Array<{
     label?: string
     description?: string
@@ -234,11 +253,13 @@ export const BranchWorkflow = {
             )
             .join('\n')
         : '  (no prior beats — this is the opening branch)'
+    const characterContext = buildCharacterContextBlock(input.characters)
 
     const prompt = `Generate 2–3 distinct branching choices for the player at the current beat.
 
 Story context: ${input.storySeed || '(none)'}
 Current beat: ${input.currentBeatLabel || '(unspecified)'}
+${characterContext}
 
 Earlier beats so far:
 ${previous}

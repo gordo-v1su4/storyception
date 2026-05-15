@@ -14,6 +14,7 @@ export async function POST(request: NextRequest) {
       storyTitle,
       storyLogline,
       previousBeats,
+      characters,
     } = body
 
     const storySeed =
@@ -31,6 +32,7 @@ export async function POST(request: NextRequest) {
       sessionId,
       currentBeatLabel: beatLabel,
       storySeed,
+      characters: Array.isArray(characters) ? characters : [],
       previousBeats,
     })
 

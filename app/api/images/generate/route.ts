@@ -1,27 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
 import sharp from 'sharp'
-import { 
-  updateKeyframe, 
+import {
+  updateKeyframe,
   updateBeat
 } from '@/lib/nocodb'
 import { getGeminiApiKey } from '@/lib/gemini-api-key'
-import { generateStoryboardGridBase64 } from '@/lib/gemini-storyboard-image'
+import {
+  generateStoryboardGridBase64,
+  type StoryboardReferenceImagePart,
+} from '@/lib/gemini-storyboard-image'
 import { uploadBufferViaMediaApi } from '@/lib/object-storage'
 
 /** Avoid regex on multi‑MB data URLs — `.+` / dotAll can blow the regexp stack. */
 const DATA_URL_MAX_BYTES = 35 * 1024 * 1024
 
-function parseDataUrlBase64(s: string): { mimeType: string; data: string } | null {
+function parseDataUrlBase64(s: string): StoryboardReferenceImagePart | null {
   if (!s.startsWith('data:')) return null
   const sep = ';base64,'
   const i = s.indexOf(sep)
   if (i === -1) return null
   const mimeType = s.slice(5, i).trim() || 'image/png'
-  const data = s.slice(i + sep.length)
-  if (data.length > DATA_URL_MAX_BYTES) {
+  const base64 = s.slice(i + sep.length)
+  if (base64.length > DATA_URL_MAX_BYTES) {
     throw new Error('Reference data URL exceeds maximum size')
   }
-  return { mimeType, data }
+  return { mimeType, base64 }
+}
+
+function isHttpUrl(s: string): boolean {
+  return /^https?:\/\//i.test(s)
 }
 
 function normalizeKeyframePrompts(
@@ -50,20 +57,35 @@ function normalizeKeyframePrompts(
 async function resolveReferenceImageParts(body: {
   referenceImageBase64?: string
   referenceImageUrl?: string
-}): Promise<{ mimeType: string; data: string }> {
-  const raw = body.referenceImageBase64
-  if (raw && typeof raw === 'string') {
-    const trimmed = raw.trim()
-    const parsed = parseDataUrlBase64(trimmed)
-    if (parsed) return parsed
-    return { mimeType: 'image/png', data: trimmed }
+  referenceImages?: string[]
+}): Promise<StoryboardReferenceImagePart[]> {
+  const refs = [...(Array.isArray(body.referenceImages) ? body.referenceImages : [])]
+  if (typeof body.referenceImageUrl === 'string' && body.referenceImageUrl.trim()) {
+    refs.push(body.referenceImageUrl.trim())
   }
-  const url = body.referenceImageUrl
-  if (url && typeof url === 'string') {
-    const trimmed = url.trim()
+  if (typeof body.referenceImageBase64 === 'string' && body.referenceImageBase64.trim()) {
+    refs.push(body.referenceImageBase64.trim())
+  }
+
+  if (refs.length === 0) {
+    throw new Error(
+      'Reference image required: pass referenceImageUrl (http/https), referenceImages, or referenceImageBase64'
+    )
+  }
+
+  const parts: StoryboardReferenceImagePart[] = []
+  for (const ref of refs) {
+    if (typeof ref !== 'string') continue
+    const trimmed = ref.trim()
+    if (!trimmed) continue
+
     const fromDataUrl = parseDataUrlBase64(trimmed)
-    if (fromDataUrl) return fromDataUrl
-    if (/^https?:\/\//i.test(trimmed)) {
+    if (fromDataUrl) {
+      parts.push(fromDataUrl)
+      continue
+    }
+
+    if (isHttpUrl(trimmed)) {
       const res = await fetch(trimmed)
       if (!res.ok) {
         throw new Error(`Failed to fetch reference image: ${res.status}`)
@@ -71,12 +93,20 @@ async function resolveReferenceImageParts(body: {
       const buf = Buffer.from(await res.arrayBuffer())
       const ct = res.headers.get('content-type') || 'image/jpeg'
       const mime = ct.split(';')[0]?.trim() || 'image/jpeg'
-      return { mimeType: mimeMatch(mime) ? mime : 'image/jpeg', data: buf.toString('base64') }
+      parts.push({ mimeType: mimeMatch(mime) ? mime : 'image/jpeg', base64: buf.toString('base64') })
+      continue
     }
+
+    parts.push({ mimeType: 'image/png', base64: trimmed })
   }
-  throw new Error(
-    'Reference image required: pass referenceImageUrl (http/https) or referenceImageBase64'
-  )
+
+  if (parts.length === 0) {
+    throw new Error(
+      'Reference image required: pass referenceImageUrl (http/https), referenceImages URL/base64, or referenceImageBase64'
+    )
+  }
+
+  return parts
 }
 
 function mimeMatch(m: string): boolean {
@@ -93,6 +123,7 @@ export async function POST(request: NextRequest) {
       keyframe_prompts,
       referenceImageBase64,
       referenceImageUrl,
+      referenceImages,
       beatLabel,
       beatDescription,
       branchContext,
@@ -113,9 +144,11 @@ export async function POST(request: NextRequest) {
       beatLabel: typeof beatLabel === 'string' ? beatLabel : undefined,
       beatDescription: typeof beatDescription === 'string' ? beatDescription : undefined,
     })
-    const { mimeType, data: imageB64 } = await resolveReferenceImageParts({
+
+    const referenceParts = await resolveReferenceImageParts({
       referenceImageBase64,
       referenceImageUrl,
+      referenceImages,
     })
 
     const branchNote =
@@ -123,11 +156,14 @@ export async function POST(request: NextRequest) {
         ? ` Narrative context: ${branchContext.trim()}`
         : ''
 
-    const imagePrompt = `Transform the provided reference image into a cinematic sequence of 9 keyframes arranged in a 3x3 grid.${branchNote} Keyframes: ${prompts.join(' | ')}`
+    const referenceNote =
+      referenceParts.length > 1
+        ? ' Use the first reference as the original tone/composition anchor; use any following clean look sheets and annotated character sheets as locked identity references for character continuity.'
+        : ' Use the provided reference image as the tone, composition, and identity anchor.'
+    const imagePrompt = `Transform the provided reference imagery into a cinematic sequence of 9 keyframes arranged in a 3x3 grid.${referenceNote}${branchNote} Keyframes: ${prompts.join(' | ')}`
 
     const generatedImageBase64 = await generateStoryboardGridBase64({
-      referenceMimeType: mimeType,
-      referenceBase64: imageB64,
+      referenceImages: referenceParts,
       prompt: imagePrompt,
     })
 
@@ -143,11 +179,11 @@ export async function POST(request: NextRequest) {
       const row = Math.floor(i / 3)
       const col = i % 3
       const cellBuffer = await sharp(gridBuffer)
-        .extract({ 
-          left: col * cellWidth, 
-          top: row * cellHeight, 
-          width: cellWidth, 
-          height: cellHeight 
+        .extract({
+          left: col * cellWidth,
+          top: row * cellHeight,
+          width: cellWidth,
+          height: cellHeight,
         })
         .png()
         .toBuffer()
