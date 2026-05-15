@@ -27,7 +27,17 @@ import { CharacterCard } from "./character-card"
 import type { StoryBeat, BranchOption } from "@/lib/types"
 import type { CharacterRecord } from "@/lib/storyception-schema"
 import { motion } from "framer-motion"
-import { ArrowRight, ArrowDown, Move, RotateCcw, Lock, Unlock, Wand2, Eye, EyeOff } from "lucide-react"
+import {
+  ArrowRight,
+  ArrowDown,
+  Move,
+  RotateCcw,
+  Lock,
+  Unlock,
+  Wand2,
+  Eye,
+  EyeOff,
+} from "lucide-react"
 import { getBeatHexColor, BRANCH_COLORS } from "@/lib/colors"
 import { calculateHierarchyLayout } from "@/lib/use-hierarchy-layout"
 import { archetypes } from "@/lib/data"
@@ -58,23 +68,39 @@ interface FlowCanvasProps {
 
 // Default edge options - bezier curves with cyan arrows
 const defaultEdgeOptions = {
-  type: 'default', // 'default' = bezier curves
+  type: "default", // 'default' = bezier curves
   animated: false,
   style: {
     strokeWidth: 3,
-    stroke: '#22d3ee',
+    stroke: "#22d3ee",
   },
   markerEnd: {
     type: MarkerType.ArrowClosed,
     width: 20,
     height: 20,
-    color: '#22d3ee',
+    color: "#22d3ee",
   },
 }
 
 // Inner component that has access to useReactFlow
-function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, referenceImageUrl, referenceImages = [], characters = [], sessionId, archetypeIndex = 0, storyTitle = '', storyLogline = '', storySeed = '', outcomeName = '' }: FlowCanvasProps) {
-  const [expandedBranches, setExpandedBranches] = useState<Set<number>>(new Set())
+function FlowCanvasInner({
+  beats,
+  selectedBeatId,
+  onSelectBeat,
+  onUpdateBeat,
+  referenceImageUrl,
+  referenceImages = [],
+  characters = [],
+  sessionId,
+  archetypeIndex = 0,
+  storyTitle = "",
+  storyLogline = "",
+  storySeed = "",
+  outcomeName = "",
+}: FlowCanvasProps) {
+  const [expandedBranches, setExpandedBranches] = useState<Set<number>>(
+    new Set(),
+  )
   const [layout, setLayout] = useState<LayoutDirection>("vertical") // Vertical = top-to-bottom flow
   const [locked, setLocked] = useState(false)
   const [autoLayout, setAutoLayout] = useState(true)
@@ -83,54 +109,65 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
   const layoutTimeoutRef = useRef<NodeJS.Timeout>(undefined)
   const isInitialMount = useRef(true) // Track first render to only fitView once
   const prevRevealedBeats = useRef(revealedBeats) // Track previous to detect reveals
-  const keyframeReferenceImages = useMemo(() => {
-    const ordered = [
-      ...referenceImages,
-      ...(referenceImageUrl ? [referenceImageUrl] : []),
-      ...characters.flatMap((character) => {
-        if (character.kind !== 'character') return []
-        return [character.look_sheet_image_url, character.sheet_image_url].filter(
-          (url): url is string => typeof url === 'string' && url.trim().length > 0
-        )
+  const characterReferenceImages = useMemo(
+    () =>
+      characters.flatMap((character) => {
+        if (character.kind !== "character") return []
+        return [
+          character.look_sheet_image_url,
+          character.sheet_image_url,
+        ].filter((url): url is string => Boolean(url))
       }),
-    ]
-    return Array.from(new Set(ordered.map((url) => url.trim()).filter(Boolean)))
-  }, [characters, referenceImageUrl, referenceImages])
-
+    [characters],
+  )
+  const orderedReferenceImages = useMemo(() => {
+    const originals =
+      referenceImages.length > 0
+        ? referenceImages
+        : referenceImageUrl
+          ? [referenceImageUrl]
+          : []
+    return Array.from(
+      new Set([...originals, ...characterReferenceImages].map((url) => url.trim()).filter(Boolean)),
+    )
+  }, [characterReferenceImages, referenceImageUrl, referenceImages])
 
   // Calculate node positions based on layout (fallback for manual positioning)
-  const getNodePosition = useCallback((idx: number, level: number = 0) => {
-    const HORIZONTAL_SPACING = 450
-    const VERTICAL_SPACING = 350
-    const BRANCH_OFFSET = 220
+  const getNodePosition = useCallback(
+    (idx: number, level: number = 0) => {
+      const HORIZONTAL_SPACING = 450
+      const VERTICAL_SPACING = 350
+      const BRANCH_OFFSET = 220
 
-    switch (layout) {
-      case "horizontal":
-        return { 
-          x: idx * HORIZONTAL_SPACING, 
-          y: 200 + (level * BRANCH_OFFSET) 
-        }
-      case "vertical":
-        return { 
-          x: 400 + (level * BRANCH_OFFSET), 
-          y: idx * VERTICAL_SPACING 
-        }
-      case "free":
-        const cols = Math.ceil(Math.sqrt(beats.length))
-        const row = Math.floor(idx / cols)
-        const col = idx % cols
-        return { 
-          x: col * HORIZONTAL_SPACING, 
-          y: row * VERTICAL_SPACING + (level * BRANCH_OFFSET) 
-        }
-      default:
-        return { x: idx * HORIZONTAL_SPACING, y: 200 }
-    }
-  }, [layout, beats.length])
+      switch (layout) {
+        case "horizontal":
+          return {
+            x: idx * HORIZONTAL_SPACING,
+            y: 200 + level * BRANCH_OFFSET,
+          }
+        case "vertical":
+          return {
+            x: 400 + level * BRANCH_OFFSET,
+            y: idx * VERTICAL_SPACING,
+          }
+        case "free":
+          const cols = Math.ceil(Math.sqrt(beats.length))
+          const row = Math.floor(idx / cols)
+          const col = idx % cols
+          return {
+            x: col * HORIZONTAL_SPACING,
+            y: row * VERTICAL_SPACING + level * BRANCH_OFFSET,
+          }
+        default:
+          return { x: idx * HORIZONTAL_SPACING, y: 200 }
+      }
+    },
+    [layout, beats.length],
+  )
 
   // Toggle branch expansion
   const toggleBranch = useCallback((beatId: number) => {
-    setExpandedBranches(prev => {
+    setExpandedBranches((prev) => {
       const next = new Set(prev)
       if (next.has(beatId)) {
         next.delete(beatId)
@@ -143,174 +180,224 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
 
   // Generate keyframes for a beat using the on-demand image generation API
   // branchContext: optional context from the selected branch that leads INTO this beat
-  const generateKeyframes = useCallback(async (beat: StoryBeat, branchContext?: { title: string; description: string }): Promise<string[] | null> => {
-    if (!sessionId || keyframeReferenceImages.length === 0) {
-      console.log('⚠️ No session ID or reference images, skipping keyframe generation')
-      return null
-    }
-
-    try {
-      console.log(`🎬 Generating keyframes for beat: ${beat.label}${branchContext ? ` (after branch: ${branchContext.title})` : ''}`)
-
-      const response = await fetch('/api/images/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId,
-          beatId: beat.beatId || `beat-${beat.id}`,
-          referenceImageUrl: keyframeReferenceImages[0],
-          referenceImages: keyframeReferenceImages,
-          keyframePrompts: beat.keyframePrompts ?? [],
-          beatLabel: beat.label,
-          beatDescription: beat.desc || beat.generatedIdea || '',
-          beatDuration: beat.duration,
-          beatPercent: beat.percentOfTotal,
-          branchContext: branchContext
-            ? `The player chose: "${branchContext.title}" — ${branchContext.description}`
-            : undefined,
-        }),
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error(`Image generation failed [${response.status}]:`, errorText)
+  const generateKeyframes = useCallback(
+    async (
+      beat: StoryBeat,
+      branchContext?: { title: string; description: string },
+    ): Promise<string[] | null> => {
+      if (!sessionId || orderedReferenceImages.length === 0) {
+        console.log(
+          "⚠️ No session ID or reference images, skipping keyframe generation",
+        )
         return null
       }
 
-      const result = await response.json()
-
-      if (result.success && result.keyframeUrls?.length > 0) {
-        console.log(`✅ Got ${result.keyframeUrls.length} keyframe URLs`)
-        return result.keyframeUrls
-      }
-
-      console.log('⚠️ No keyframes in response:', JSON.stringify(result).substring(0, 200))
-      return null
-    } catch (error) {
-      console.error('Keyframe generation error:', error)
-      return null
-    }
-  }, [sessionId, keyframeReferenceImages])
-
-  // Handle branch selection - progressively generate next beat content + images, then reveal
-  const handleSelectBranch = useCallback(async (beatId: number, branch: BranchOption) => {
-    // 1. Update the current beat to show branch selection
-    onUpdateBeat(beatId, {
-      selectedBranchId: branch.id,
-      branches: beats.find(b => b.id === beatId)?.branches?.map(b => ({
-        ...b,
-        selected: b.id === branch.id
-      }))
-    })
-
-    // 2. Find the next beat
-    const beatIndex = beats.findIndex(b => b.id === beatId)
-    if (beatIndex < 0 || beatIndex + 1 >= beats.length) return
-
-    const nextBeat = beats[beatIndex + 1]
-    const branchContext = { title: branch.title, description: branch.desc || '' }
-
-    // 3. Mark next beat as generating
-    onUpdateBeat(nextBeat.id, { status: 'generating' })
-
-    // 4. If next beat is a skeleton, generate its content first via progressive beat endpoint
-    let updatedNextBeat = nextBeat
-    const isSkeleton = nextBeat.status === 'skeleton' || (!nextBeat.desc && !nextBeat.generatedIdea)
-
-    if (isSkeleton && sessionId) {
       try {
-        console.log(`🎭 Generating progressive content for beat: ${nextBeat.label}`)
+        console.log(
+          `🎬 Generating keyframes for beat: ${beat.label}${branchContext ? ` (after branch: ${branchContext.title})` : ""}`,
+        )
 
-        // Build context from all previous beats
-        const prevBeats = beats.slice(0, beatIndex + 1).map(b => ({
-          label: b.label,
-          description: b.desc || b.generatedIdea || '',
-          selectedBranch: b.branches?.find(br => br.selected)?.title,
-        }))
-
-        const beatGenResponse = await fetch('/api/story/beat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const response = await fetch("/api/images/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             sessionId,
-            beatId: nextBeat.beatId || `beat-${nextBeat.id}`,
-            beatIndex: beatIndex + 1,
-            beatLabel: nextBeat.label,
-            beatStructureDesc: nextBeat.desc || '',
-            archetypeName: archetypes[archetypeIndex]?.title || 'Story Circle',
-            outcomeName,
-            storyTitle,
-            storyLogline,
-            storySeed,
-            selectedBranch: {
-              title: branch.title,
-              description: branch.desc || '',
-              type: branch.type || 'discovery',
-            },
-            previousBeats: prevBeats,
+            beatId: beat.beatId || `beat-${beat.id}`,
+            referenceImageUrl: orderedReferenceImages[0],
+            referenceImages: orderedReferenceImages,
+            keyframePrompts: beat.keyframePrompts ?? [],
+            beatLabel: beat.label,
+            beatDescription: beat.desc || beat.generatedIdea || "",
+            beatDuration: beat.duration,
+            beatPercent: beat.percentOfTotal,
+            branchContext: branchContext
+              ? `The player chose: "${branchContext.title}" — ${branchContext.description}`
+              : undefined,
           }),
         })
-        const beatGenData = await beatGenResponse.json()
 
-        if (!beatGenResponse.ok) {
+        if (!response.ok) {
+          const errorText = await response.text()
           console.error(
-            `Beat generation failed [${beatGenResponse.status}]:`,
-            JSON.stringify(beatGenData).substring(0, 200)
+            `Image generation failed [${response.status}]:`,
+            errorText,
           )
-        } else if (beatGenData.success) {
-          console.log(`✅ Beat content generated: "${beatGenData.scene_description?.substring(0, 60)}..."`)
-
-          // Update state with generated content
-          onUpdateBeat(nextBeat.id, {
-            desc: beatGenData.scene_description,
-            generatedIdea: beatGenData.scene_description,
-            keyframePrompts: beatGenData.keyframe_prompts,
-            status: 'pending',
-          })
-
-          // Create local copy with updated fields for image generation
-          // (onUpdateBeat is async state, closure still has old values)
-          updatedNextBeat = {
-            ...nextBeat,
-            desc: beatGenData.scene_description,
-            generatedIdea: beatGenData.scene_description,
-            keyframePrompts: beatGenData.keyframe_prompts,
-            status: 'pending',
-          }
-        } else {
-          console.error('Progressive beat generation failed:', beatGenData.error)
+          return null
         }
-      } catch (err) {
-        console.error('Progressive beat generation error:', err)
+
+        const result = await response.json()
+
+        if (result.success && result.keyframeUrls?.length > 0) {
+          console.log(`✅ Got ${result.keyframeUrls.length} keyframe URLs`)
+          return result.keyframeUrls
+        }
+
+        console.log(
+          "⚠️ No keyframes in response:",
+          JSON.stringify(result).substring(0, 200),
+        )
+        return null
+      } catch (error) {
+        console.error("Keyframe generation error:", error)
+        return null
       }
-    }
+    },
+    [sessionId, orderedReferenceImages],
+  )
 
-    // 5. Generate keyframes (images) for the next beat with branch context
-    const keyframes = await generateKeyframes(updatedNextBeat, branchContext)
-
-    // 6. Update the next beat with generated frames
-    if (keyframes && keyframes.length > 0) {
-      onUpdateBeat(nextBeat.id, {
-        frames: keyframes,
-        status: 'ready'
+  // Handle branch selection - progressively generate next beat content + images, then reveal
+  const handleSelectBranch = useCallback(
+    async (beatId: number, branch: BranchOption) => {
+      // 1. Update the current beat to show branch selection
+      onUpdateBeat(beatId, {
+        selectedBranchId: branch.id,
+        branches: beats
+          .find((b) => b.id === beatId)
+          ?.branches?.map((b) => ({
+            ...b,
+            selected: b.id === branch.id,
+          })),
       })
 
-      // Also give the selected branch node the same images for visual feedback
-      const currentBeat = beats[beatIndex]
-      if (currentBeat.branches) {
-        const updatedBranches = currentBeat.branches.map(b =>
-          b.id === branch.id ? { ...b, selected: true, frames: keyframes } : { ...b, selected: false }
-        )
-        onUpdateBeat(beatId, { branches: updatedBranches })
-      }
-    } else {
-      console.warn(`⚠️ No keyframes generated for beat ${nextBeat.id} after branch selection`)
-      onUpdateBeat(nextBeat.id, { status: 'ready' })
-    }
+      // 2. Find the next beat
+      const beatIndex = beats.findIndex((b) => b.id === beatId)
+      if (beatIndex < 0 || beatIndex + 1 >= beats.length) return
 
-    // 7. Reveal the next beat
-    setRevealedBeats(prev => Math.max(prev, beatIndex + 2))
-  }, [beats, onUpdateBeat, generateKeyframes, sessionId, archetypeIndex, storyTitle, storyLogline, storySeed, outcomeName])
+      const nextBeat = beats[beatIndex + 1]
+      const branchContext = {
+        title: branch.title,
+        description: branch.desc || "",
+      }
+
+      // 3. Mark next beat as generating
+      onUpdateBeat(nextBeat.id, { status: "generating" })
+
+      // 4. If next beat is a skeleton, generate its content first via progressive beat endpoint
+      let updatedNextBeat = nextBeat
+      const isSkeleton =
+        nextBeat.status === "skeleton" ||
+        (!nextBeat.desc && !nextBeat.generatedIdea)
+
+      if (isSkeleton && sessionId) {
+        try {
+          console.log(
+            `🎭 Generating progressive content for beat: ${nextBeat.label}`,
+          )
+
+          // Build context from all previous beats
+          const prevBeats = beats.slice(0, beatIndex + 1).map((b) => ({
+            label: b.label,
+            description: b.desc || b.generatedIdea || "",
+            selectedBranch: b.branches?.find((br) => br.selected)?.title,
+          }))
+
+          const beatGenResponse = await fetch("/api/story/beat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId,
+              beatId: nextBeat.beatId || `beat-${nextBeat.id}`,
+              beatIndex: beatIndex + 1,
+              beatLabel: nextBeat.label,
+              beatStructureDesc: nextBeat.desc || "",
+              archetypeName:
+                archetypes[archetypeIndex]?.title || "Story Circle",
+              outcomeName,
+              storyTitle,
+              storyLogline,
+              storySeed,
+              selectedBranch: {
+                title: branch.title,
+                description: branch.desc || "",
+                type: branch.type || "discovery",
+              },
+              previousBeats: prevBeats,
+              characters,
+            }),
+          })
+          const beatGenData = await beatGenResponse.json()
+
+          if (!beatGenResponse.ok) {
+            console.error(
+              `Beat generation failed [${beatGenResponse.status}]:`,
+              JSON.stringify(beatGenData).substring(0, 200),
+            )
+          } else if (beatGenData.success) {
+            console.log(
+              `✅ Beat content generated: "${beatGenData.scene_description?.substring(0, 60)}..."`,
+            )
+
+            // Update state with generated content
+            onUpdateBeat(nextBeat.id, {
+              desc: beatGenData.scene_description,
+              generatedIdea: beatGenData.scene_description,
+              keyframePrompts: beatGenData.keyframe_prompts,
+              status: "pending",
+            })
+
+            // Create local copy with updated fields for image generation
+            // (onUpdateBeat is async state, closure still has old values)
+            updatedNextBeat = {
+              ...nextBeat,
+              desc: beatGenData.scene_description,
+              generatedIdea: beatGenData.scene_description,
+              keyframePrompts: beatGenData.keyframe_prompts,
+              status: "pending",
+            }
+          } else {
+            console.error(
+              "Progressive beat generation failed:",
+              beatGenData.error,
+            )
+          }
+        } catch (err) {
+          console.error("Progressive beat generation error:", err)
+        }
+      }
+
+      // 5. Generate keyframes (images) for the next beat with branch context
+      const keyframes = await generateKeyframes(updatedNextBeat, branchContext)
+
+      // 6. Update the next beat with generated frames
+      if (keyframes && keyframes.length > 0) {
+        onUpdateBeat(nextBeat.id, {
+          frames: keyframes,
+          status: "ready",
+        })
+
+        // Also give the selected branch node the same images for visual feedback
+        const currentBeat = beats[beatIndex]
+        if (currentBeat.branches) {
+          const updatedBranches = currentBeat.branches.map((b) =>
+            b.id === branch.id
+              ? { ...b, selected: true, frames: keyframes }
+              : { ...b, selected: false },
+          )
+          onUpdateBeat(beatId, { branches: updatedBranches })
+        }
+      } else {
+        console.warn(
+          `⚠️ No keyframes generated for beat ${nextBeat.id} after branch selection`,
+        )
+        onUpdateBeat(nextBeat.id, { status: "ready" })
+      }
+
+      // 7. Reveal the next beat
+      setRevealedBeats((prev) => Math.max(prev, beatIndex + 2))
+    },
+    [
+      beats,
+      onUpdateBeat,
+      generateKeyframes,
+      sessionId,
+      archetypeIndex,
+      storyTitle,
+      storyLogline,
+      storySeed,
+      outcomeName,
+      characters,
+    ],
+  )
 
   // Convert beats to React Flow nodes and edges
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
@@ -341,14 +428,14 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
     // Only show revealed beats (progressive reveal)
     const visibleBeats = beats.slice(0, revealedBeats)
     const hasMoreBeats = revealedBeats < beats.length
-    
+
     // First pass: create all nodes with placeholder positions
     visibleBeats.forEach((beat, idx) => {
       const position = getNodePosition(idx) // Will be overridden by hierarchy layout
       const isExpanded = expandedBranches.has(beat.id)
-      const hasSelectedBranch = beat.branches?.some(b => b.selected)
+      const hasSelectedBranch = beat.branches?.some((b) => b.selected)
       const showBranches = isExpanded || hasSelectedBranch // Show branches if expanded OR if one is selected
-      
+
       // Main beat node
       nodes.push({
         id: `beat-${beat.id}`,
@@ -365,46 +452,56 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
             if (!beat.branches || beat.branches.length === 0) {
               // Generate branches on-demand via Gemini (see /api/story/branches)
               if (sessionId) {
-                const prevBeats = beats.slice(0, idx).map(b => ({
+                const prevBeats = beats.slice(0, idx).map((b) => ({
                   label: b.label,
-                  description: b.desc || b.generatedIdea || '',
-                  selectedBranch: b.branches?.find(br => br.selected)?.title,
+                  description: b.desc || b.generatedIdea || "",
+                  selectedBranch: b.branches?.find((br) => br.selected)?.title,
                 }))
-                fetch('/api/story/branches', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
+                fetch("/api/story/branches", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     sessionId,
                     beatId: beat.beatId || `beat-${beat.id}`,
                     beatLabel: beat.label,
-                    beatDescription: beat.desc || beat.generatedIdea || '',
+                    beatDescription: beat.desc || beat.generatedIdea || "",
                     archetypeIndex,
-                    archetypeBeatId: beat.beatId?.split('-').pop() || '',
+                    archetypeBeatId: beat.beatId?.split("-").pop() || "",
                     storyTitle,
                     storyLogline,
                     previousBeats: prevBeats,
+                    characters,
                   }),
                 })
-                  .then(r => r.json())
-                  .then(data => {
+                  .then((r) => r.json())
+                  .then((data) => {
                     if (data.success && data.branches?.length > 0) {
-                      const branches: BranchOption[] = data.branches.map((b: { id: number; title: string; description: string; type: string; duration: string }) => ({
-                        id: b.id,
-                        title: b.title,
-                        desc: b.description,
-                        type: b.type,
-                        duration: b.duration,
-                        selected: false,
-                      }))
+                      const branches: BranchOption[] = data.branches.map(
+                        (b: {
+                          id: number
+                          title: string
+                          description: string
+                          type: string
+                          duration: string
+                        }) => ({
+                          id: b.id,
+                          title: b.title,
+                          desc: b.description,
+                          type: b.type,
+                          duration: b.duration,
+                          selected: false,
+                        }),
+                      )
                       onUpdateBeat(beat.id, { branches })
                     }
                   })
-                  .catch(err => console.error('Branch gen failed:', err))
+                  .catch((err) => console.error("Branch gen failed:", err))
               }
             }
             toggleBranch(beat.id)
           },
-          onUpdateBeat: (updates: Partial<StoryBeat>) => onUpdateBeat(beat.id, updates),
+          onUpdateBeat: (updates: Partial<StoryBeat>) =>
+            onUpdateBeat(beat.id, updates),
         },
       })
 
@@ -413,9 +510,9 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
       // Otherwise, connect beat to beat (when no branches expanded/selected)
       if (idx < visibleBeats.length - 1) {
         const nextBeat = visibleBeats[idx + 1]
-        const selectedBranch = beat.branches?.find(b => b.selected)
+        const selectedBranch = beat.branches?.find((b) => b.selected)
         const beatColor = getBeatHexColor(idx, beats.length)
-        
+
         // Only draw beat-to-beat edge if NO branch is selected for this beat
         if (!selectedBranch) {
           edges.push({
@@ -424,7 +521,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
             sourceHandle: undefined,
             target: `beat-${nextBeat.id}`,
             targetHandle: undefined,
-            type: 'default', // Bezier curve
+            type: "default", // Bezier curve
             animated: false,
             style: {
               strokeWidth: 3,
@@ -443,30 +540,32 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
       // Branch nodes - show when expanded OR when a branch is selected
       if (beat.branches && beat.branches.length > 0 && showBranches) {
         const branchCount = beat.branches.length
-        const hasBranchSelected = beat.branches.some(b => b.selected)
-        
+        const hasBranchSelected = beat.branches.some((b) => b.selected)
+
         // Branch colors for A, B, C
-        const branchColorKeys = ['a', 'b', 'c'] as const
-        
+        const branchColorKeys = ["a", "b", "c"] as const
+
         beat.branches.forEach((branch, branchIdx) => {
           // Better spacing: spread branches out more, stagger vertically
-          const horizontalOffset = 200  // Distance from parent beat
-          const verticalSpread = 280    // Vertical distance between branches
-          const spreadFactor = (branchIdx - (branchCount - 1) / 2) * verticalSpread
-          
-          const branchPosition = layout === "horizontal" 
-            ? { 
-                x: position.x + horizontalOffset + (branchIdx * 40), // Slight horizontal stagger
-                y: position.y + 300 + spreadFactor 
-              }
-            : { 
-                x: position.x + 300 + spreadFactor, 
-                y: position.y + horizontalOffset + (branchIdx * 40)
-              }
-          
+          const horizontalOffset = 200 // Distance from parent beat
+          const verticalSpread = 280 // Vertical distance between branches
+          const spreadFactor =
+            (branchIdx - (branchCount - 1) / 2) * verticalSpread
+
+          const branchPosition =
+            layout === "horizontal"
+              ? {
+                  x: position.x + horizontalOffset + branchIdx * 40, // Slight horizontal stagger
+                  y: position.y + 300 + spreadFactor,
+                }
+              : {
+                  x: position.x + 300 + spreadFactor,
+                  y: position.y + horizontalOffset + branchIdx * 40,
+                }
+
           const branchNodeId = `branch-${beat.id}-${branch.id}`
           const branchColor = BRANCH_COLORS[branchColorKeys[branchIdx % 3]]
-          
+
           nodes.push({
             id: branchNodeId,
             type: "branch",
@@ -475,9 +574,9 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
             data: {
               branch,
               parentBeatId: beat.id,
-              branchIndex: branchIdx,  // Pass the index for color selection
+              branchIndex: branchIdx, // Pass the index for color selection
               isSelected: branch.selected,
-              isLocked: hasBranchSelected && !branch.selected,  // Lock other branches after selection
+              isLocked: hasBranchSelected && !branch.selected, // Lock other branches after selection
               layout,
               onSelect: () => handleSelectBranch(beat.id, branch),
             },
@@ -487,28 +586,28 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
           edges.push({
             id: `branch-edge-${beat.id}-${branch.id}`,
             source: `beat-${beat.id}`,
-            sourceHandle: 'branch',
+            sourceHandle: "branch",
             target: branchNodeId,
-            type: 'default', // Bezier curve
+            type: "default", // Bezier curve
             animated: !hasBranchSelected || branch.selected,
             style: {
               strokeWidth: branch.selected ? 4 : 2,
-              stroke: branch.selected 
-                ? branchColor.hex 
-                : hasBranchSelected 
-                  ? '#3f3f46' // zinc-700 for locked
+              stroke: branch.selected
+                ? branchColor.hex
+                : hasBranchSelected
+                  ? "#3f3f46" // zinc-700 for locked
                   : branchColor.hex,
-              strokeDasharray: branch.selected ? undefined : '8 4',
+              strokeDasharray: branch.selected ? undefined : "8 4",
               opacity: hasBranchSelected && !branch.selected ? 0.3 : 1,
             },
             markerEnd: {
               type: MarkerType.ArrowClosed,
               width: 14,
               height: 14,
-              color: branch.selected 
-                ? branchColor.hex 
-                : hasBranchSelected 
-                  ? '#3f3f46'
+              color: branch.selected
+                ? branchColor.hex
+                : hasBranchSelected
+                  ? "#3f3f46"
                   : branchColor.hex,
             },
           })
@@ -522,7 +621,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
               id: `selected-branch-${beat.id}-to-beat-${nextBeat.id}`,
               source: branchNodeId,
               target: `beat-${nextBeat.id}`,
-              type: 'default',
+              type: "default",
               animated: true,
               style: {
                 strokeWidth: 4,
@@ -569,45 +668,45 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
       const lastVisibleBeat = visibleBeats[visibleBeats.length - 1]
       const nextBeat = beats[revealedBeats]
       const remainingBeats = beats.length - revealedBeats
-      
+
       // Teaser node - position will be set by layout algorithm
       nodes.push({
-        id: 'teaser-next',
-        type: 'default',
+        id: "teaser-next",
+        type: "default",
         position: { x: 0, y: 0 }, // Will be overwritten by layout
         draggable: false,
         selectable: false,
         data: {
-          label: `⬇ ${nextBeat?.label || 'Next'} (${remainingBeats} more)`,
+          label: `⬇ ${nextBeat?.label || "Next"} (${remainingBeats} more)`,
         },
         style: {
-          background: '#18181b',
-          border: '2px dashed #3f3f46',
-          borderRadius: '4px',
+          background: "#18181b",
+          border: "2px dashed #3f3f46",
+          borderRadius: "4px",
           width: 280,
-          padding: '16px',
-          fontSize: '11px',
-          color: '#71717a',
-          textAlign: 'center',
+          padding: "16px",
+          fontSize: "11px",
+          color: "#71717a",
+          textAlign: "center",
         },
       })
 
       // Connect to teaser from selected branch if exists, otherwise from beat
-      const selectedBranch = lastVisibleBeat.branches?.find(b => b.selected)
-      const sourceNode = selectedBranch 
+      const selectedBranch = lastVisibleBeat.branches?.find((b) => b.selected)
+      const sourceNode = selectedBranch
         ? `branch-${lastVisibleBeat.id}-${selectedBranch.id}`
         : `beat-${lastVisibleBeat.id}`
-      
+
       edges.push({
         id: `edge-to-teaser`,
         source: sourceNode,
-        target: 'teaser-next',
-        type: 'default',
+        target: "teaser-next",
+        type: "default",
         animated: true,
         style: {
           strokeWidth: 2,
-          stroke: '#3f3f46',
-          strokeDasharray: '8 4',
+          stroke: "#3f3f46",
+          strokeDasharray: "8 4",
         },
       })
     }
@@ -616,10 +715,10 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
     if (autoLayout && nodes.length > 0) {
       const layoutOptions = {
         nodeWidth: 320,
-        nodeHeight: 400,                // 4:5 aspect ratio
-        beatGap: 60,                    // Gap below beat
-        branchHorizontalSpacing: 350,   // Space between branches
-        branchGap: 80,                  // Gap below branches to next beat
+        nodeHeight: 400, // 4:5 aspect ratio
+        beatGap: 60, // Gap below beat
+        branchHorizontalSpacing: 350, // Space between branches
+        branchGap: 80, // Gap below branches to next beat
       }
       const layoutNodes = nodes.filter(node => !node.id.startsWith('character') && node.id !== 'characters-lane-label')
       const positions = calculateHierarchyLayout(layoutNodes, edges, layoutOptions)
@@ -645,7 +744,25 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
     }
 
     return { nodes, edges }
-  }, [beats, selectedBeatId, expandedBranches, layout, locked, autoLayout, revealedBeats, getNodePosition, onSelectBeat, onUpdateBeat, toggleBranch, handleSelectBranch, archetypeIndex, sessionId, storyLogline, storyTitle, characters])
+  }, [
+    beats,
+    selectedBeatId,
+    expandedBranches,
+    layout,
+    locked,
+    autoLayout,
+    revealedBeats,
+    getNodePosition,
+    onSelectBeat,
+    onUpdateBeat,
+    toggleBranch,
+    handleSelectBranch,
+    archetypeIndex,
+    sessionId,
+    storyLogline,
+    storyTitle,
+    characters,
+  ])
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
@@ -654,7 +771,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
   useEffect(() => {
     setNodes(initialNodes)
     setEdges(initialEdges)
-    
+
     // Only fit view on initial mount
     if (isInitialMount.current) {
       isInitialMount.current = false
@@ -665,7 +782,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
         fitView({ padding: 0.2, duration: 300 })
       }, 100)
     }
-    
+
     return () => {
       if (layoutTimeoutRef.current) {
         clearTimeout(layoutTimeoutRef.current)
@@ -675,9 +792,14 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
 
   // Camera follow: pan to newly revealed beat when revealedBeats increases
   useEffect(() => {
-    if (prevRevealedBeats.current < revealedBeats && revealedBeats <= beats.length) {
+    if (
+      prevRevealedBeats.current < revealedBeats &&
+      revealedBeats <= beats.length
+    ) {
       // Find the newly revealed beat node position
-      const newBeatNode = initialNodes.find(n => n.id === `beat-${revealedBeats}`)
+      const newBeatNode = initialNodes.find(
+        (n) => n.id === `beat-${revealedBeats}`,
+      )
       if (newBeatNode) {
         const currentZoom = getZoom()
         // Center on the new beat with a slight delay to let layout settle
@@ -685,7 +807,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
           setCenter(
             newBeatNode.position.x + 160, // Center of 320px wide node
             newBeatNode.position.y + 200, // Center of 400px tall node
-            { zoom: Math.max(currentZoom, 0.7), duration: 400 }
+            { zoom: Math.max(currentZoom, 0.7), duration: 400 },
           )
         }, 150)
       }
@@ -701,17 +823,17 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
       // Only generate if the first beat doesn't have frames yet
       if (!firstBeat.frames || firstBeat.frames.length === 0) {
         hasGeneratedFirstBeat.current = true
-        console.log('🎬 Auto-generating keyframes for opening beat...')
-        
+        console.log("🎬 Auto-generating keyframes for opening beat...")
+
         // Mark as generating and trigger generation
-        onUpdateBeat(firstBeat.id, { status: 'generating' })
-        
-        generateKeyframes(firstBeat).then(keyframes => {
+        onUpdateBeat(firstBeat.id, { status: "generating" })
+
+        generateKeyframes(firstBeat).then((keyframes) => {
           if (keyframes && keyframes.length > 0) {
-            onUpdateBeat(firstBeat.id, { frames: keyframes, status: 'ready' })
-            console.log('✅ Opening beat keyframes ready')
+            onUpdateBeat(firstBeat.id, { frames: keyframes, status: "ready" })
+            console.log("✅ Opening beat keyframes ready")
           } else {
-            onUpdateBeat(firstBeat.id, { status: 'ready' })
+            onUpdateBeat(firstBeat.id, { status: "ready" })
           }
         })
       } else {
@@ -722,18 +844,23 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges((eds) => addEdge({
-        ...connection,
-        type: 'smoothstep',
-        animated: true,
-        style: { strokeWidth: 3, stroke: '#22d3ee' },
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          color: '#22d3ee',
-        },
-      }, eds))
+      setEdges((eds) =>
+        addEdge(
+          {
+            ...connection,
+            type: "smoothstep",
+            animated: true,
+            style: { strokeWidth: 3, stroke: "#22d3ee" },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              color: "#22d3ee",
+            },
+          },
+          eds,
+        ),
+      )
     },
-    [setEdges]
+    [setEdges],
   )
 
   // MiniMap uses the same unified colors
@@ -751,12 +878,24 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
       <main className="flex-1 flex items-center justify-center bg-black">
         <div className="text-center">
           <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center">
-            <svg className="w-8 h-8 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            <svg
+              className="w-8 h-8 text-cyan-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 10V3L4 14h7v7l9-11h-7z"
+              />
             </svg>
           </div>
           <h2 className="text-xl font-bold text-zinc-100 mb-2">No Story Yet</h2>
-          <p className="text-sm text-zinc-500">Create a new story to see the flow</p>
+          <p className="text-sm text-zinc-500">
+            Create a new story to see the flow
+          </p>
         </div>
       </main>
     )
@@ -773,7 +912,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
         nodeTypes={nodeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
         connectionLineType={ConnectionLineType.Bezier}
-        connectionLineStyle={{ strokeWidth: 3, stroke: '#22d3ee' }}
+        connectionLineStyle={{ strokeWidth: 3, stroke: "#22d3ee" }}
         fitView
         fitViewOptions={{ padding: 0.3, maxZoom: 1 }}
         minZoom={0.1}
@@ -787,11 +926,11 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
         selectNodesOnDrag={false}
         proOptions={{ hideAttribution: true }}
       >
-        <Background 
+        <Background
           color="#3f3f46" // zinc-700
-          gap={24} 
+          gap={24}
           size={2}
-          style={{ backgroundColor: '#09090b' }} // zinc-950 / black
+          style={{ backgroundColor: "#09090b" }} // zinc-950 / black
         />
         <Controls
           className="!bg-zinc-900 !border-zinc-700 !rounded-lg !shadow-xl [&>button]:!bg-zinc-800 [&>button]:!border-zinc-600 [&>button]:hover:!bg-zinc-700 [&>button>svg]:!fill-zinc-300"
@@ -805,7 +944,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
               // Get branch index from node id
               const match = node.id.match(/branch-\d+-(\d+)/)
               const branchIdx = match ? parseInt(match[1]) % 3 : 0
-              return ['#22d3ee', '#2dd4bf', '#facc15'][branchIdx] // A, B, C colors
+              return ["#22d3ee", "#2dd4bf", "#facc15"][branchIdx] // A, B, C colors
             }
             const beatIndex = beats.findIndex((b) => `beat-${b.id}` === node.id)
             return getMiniMapBeatColor(beatIndex, beats.length)
@@ -813,7 +952,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
           maskColor="rgba(9, 9, 11, 0.85)"
           style={{ height: 100, width: 150 }}
         />
-        
+
         {/* Layout Controls Panel */}
         <Panel position="top-left" className="!m-4">
           <div className="bg-zinc-900/95 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden backdrop-blur-sm">
@@ -828,7 +967,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
                 </span>
               </div>
             </div>
-            
+
             {/* Layout Toggle */}
             <div className="p-3 flex gap-2">
               <motion.button
@@ -845,7 +984,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
                 <ArrowRight size={14} />
                 <span>L→R</span>
               </motion.button>
-              
+
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -860,7 +999,7 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
                 <ArrowDown size={14} />
                 <span>T→B</span>
               </motion.button>
-              
+
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -887,7 +1026,11 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
                     ? "bg-purple-500 text-white shadow-lg shadow-purple-500/30"
                     : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
                 }`}
-                title={autoLayout ? "Auto-layout ON (no overlaps)" : "Auto-layout OFF (manual positioning)"}
+                title={
+                  autoLayout
+                    ? "Auto-layout ON (no overlaps)"
+                    : "Auto-layout OFF (manual positioning)"
+                }
               >
                 <Wand2 size={14} />
                 <span>Auto</span>
@@ -924,16 +1067,28 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={() => setRevealedBeats(revealedBeats === beats.length ? 1 : beats.length)}
+                onClick={() =>
+                  setRevealedBeats(
+                    revealedBeats === beats.length ? 1 : beats.length,
+                  )
+                }
                 className={`p-2.5 rounded-lg flex items-center gap-2 text-[10px] font-bold uppercase transition-all ${
                   revealedBeats === beats.length
                     ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/30"
                     : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
                 }`}
-                title={revealedBeats === beats.length ? "Hide future beats" : "Reveal all beats"}
+                title={
+                  revealedBeats === beats.length
+                    ? "Hide future beats"
+                    : "Reveal all beats"
+                }
               >
-                {revealedBeats === beats.length ? <EyeOff size={14} /> : <Eye size={14} />}
-                <span>{revealedBeats === beats.length ? 'Hide' : 'All'}</span>
+                {revealedBeats === beats.length ? (
+                  <EyeOff size={14} />
+                ) : (
+                  <Eye size={14} />
+                )}
+                <span>{revealedBeats === beats.length ? "Hide" : "All"}</span>
               </motion.button>
             </div>
           </div>
@@ -942,24 +1097,61 @@ function FlowCanvasInner({ beats, selectedBeatId, onSelectBeat, onUpdateBeat, re
         {/* Legend Panel */}
         <Panel position="bottom-left" className="!m-4">
           <div className="bg-zinc-900/95 border border-zinc-700 rounded-lg p-3 backdrop-blur-sm">
-            <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider mb-2">Story Flow</div>
+            <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider mb-2">
+              Story Flow
+            </div>
             <div className="space-y-1.5">
               {/* Beat colors by position */}
               <div className="flex items-center gap-1.5 mb-2">
-                <div className="w-3 h-3 rounded" style={{ backgroundColor: '#22d3ee' }} title="Act 1" />
-                <div className="w-3 h-3 rounded" style={{ backgroundColor: '#2dd4bf' }} title="Act 2a" />
-                <div className="w-3 h-3 rounded" style={{ backgroundColor: '#facc15' }} title="Act 2b" />
-                <div className="w-3 h-3 rounded" style={{ backgroundColor: '#f472b6' }} title="Act 3" />
-                <span className="text-[9px] text-zinc-500 ml-1">Beat progression</span>
+                <div
+                  className="w-3 h-3 rounded"
+                  style={{ backgroundColor: "#22d3ee" }}
+                  title="Act 1"
+                />
+                <div
+                  className="w-3 h-3 rounded"
+                  style={{ backgroundColor: "#2dd4bf" }}
+                  title="Act 2a"
+                />
+                <div
+                  className="w-3 h-3 rounded"
+                  style={{ backgroundColor: "#facc15" }}
+                  title="Act 2b"
+                />
+                <div
+                  className="w-3 h-3 rounded"
+                  style={{ backgroundColor: "#f472b6" }}
+                  title="Act 3"
+                />
+                <span className="text-[9px] text-zinc-500 ml-1">
+                  Beat progression
+                </span>
               </div>
-              
+
               <div className="border-t border-zinc-800 pt-1.5">
-                <div className="text-[8px] text-zinc-600 uppercase tracking-wider mb-1">Branches</div>
+                <div className="text-[8px] text-zinc-600 uppercase tracking-wider mb-1">
+                  Branches
+                </div>
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1">
-                    <div className="w-4 h-4 rounded text-[8px] font-bold flex items-center justify-center" style={{ backgroundColor: '#22d3ee20', color: '#22d3ee' }}>A</div>
-                    <div className="w-4 h-4 rounded text-[8px] font-bold flex items-center justify-center" style={{ backgroundColor: '#2dd4bf20', color: '#2dd4bf' }}>B</div>
-                    <div className="w-4 h-4 rounded text-[8px] font-bold flex items-center justify-center" style={{ backgroundColor: '#facc1520', color: '#facc15' }}>C</div>
+                    <div
+                      className="w-4 h-4 rounded text-[8px] font-bold flex items-center justify-center"
+                      style={{ backgroundColor: "#22d3ee20", color: "#22d3ee" }}
+                    >
+                      A
+                    </div>
+                    <div
+                      className="w-4 h-4 rounded text-[8px] font-bold flex items-center justify-center"
+                      style={{ backgroundColor: "#2dd4bf20", color: "#2dd4bf" }}
+                    >
+                      B
+                    </div>
+                    <div
+                      className="w-4 h-4 rounded text-[8px] font-bold flex items-center justify-center"
+                      style={{ backgroundColor: "#facc1520", color: "#facc15" }}
+                    >
+                      C
+                    </div>
                   </div>
                   <span className="text-[9px] text-zinc-500">Path options</span>
                 </div>

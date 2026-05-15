@@ -8,6 +8,7 @@ import { StoryCanvas } from "@/components/storyception/story-canvas"
 import { FlowCanvas } from "@/components/storyception/flow-canvas"
 import { Timeline } from "@/components/storyception/timeline"
 import type { StoryBeat } from "@/lib/types"
+import type { CharacterRecord } from "@/lib/storyception-schema"
 
 export default function StoryceptionPage() {
   const [storyBeats, setStoryBeats] = useState<StoryBeat[]>([])
@@ -19,18 +20,22 @@ export default function StoryceptionPage() {
 
   const [currentBeatIndex, setCurrentBeatIndex] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null)
+  const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(
+    null,
+  )
+  const [referenceImages, setReferenceImages] = useState<string[]>([])
+  const [characters, setCharacters] = useState<CharacterRecord[]>([])
   const [archetypeIndex, setArchetypeIndex] = useState(0)
-  const [storyTitle, setStoryTitle] = useState('')
-  const [storyLogline, setStoryLogline] = useState('')
-  const [storySeed, setStorySeed] = useState('')
-  const [outcomeName, setOutcomeName] = useState('')
+  const [storyTitle, setStoryTitle] = useState("")
+  const [storyLogline, setStoryLogline] = useState("")
+  const [storySeed, setStorySeed] = useState("")
+  const [outcomeName, setOutcomeName] = useState("")
 
   // Load existing session on mount
   useEffect(() => {
     const loadExistingSession = async () => {
-      const savedSessionId = localStorage.getItem('storyception_session')
-      
+      const savedSessionId = localStorage.getItem("storyception_session")
+
       if (!savedSessionId) {
         setIsLoading(false)
         setShowModal(true)
@@ -45,82 +50,126 @@ export default function StoryceptionPage() {
         if (data.success && data.beats && data.beats.length > 0) {
           // Convert API response to StoryBeat format
           // Note: beat.id from API is 0-indexed, but UI expects 1-indexed
-          const beats: StoryBeat[] = data.beats.map((beat: {
-            id: number
-            beatId: string
-            label: string
-            desc: string
-            generatedIdea: string
-            duration: string
-            percentOfTotal: number
-            status: string
-            branches?: Array<{
-              id: number
-              branchId: string
-              title: string
-              desc: string
-              type: string
-              duration: string
-              selected: boolean
-              depth: number
-            }>
-            keyframeUrls?: string[]
-          }, idx: number) => ({
-            id: idx + 1, // UI expects 1-indexed IDs
-            beatId: beat.beatId,
-            label: beat.label,
-            desc: beat.desc,
-            generatedIdea: beat.generatedIdea,
-            duration: beat.duration,
-            percentOfTotal: beat.percentOfTotal || Math.round(100 / data.beats.length),
-            img: `linear-gradient(135deg, hsl(${180 + idx * 15}, 70%, ${15 + idx * 2}%), hsl(${195 + idx * 10}, 60%, ${10 + idx * 2}%))`,
-            status: beat.status,
-            branches: beat.branches?.map((b, bIdx) => ({
-              id: bIdx + 1, // Branch IDs also 1-indexed
-              title: b.title,
-              desc: b.desc,
-              type: b.type as 'direct' | 'hidden' | 'sacrifice',
-              duration: b.duration,
-              selected: b.selected,
-              depth: b.depth,
-            })),
-            frames: beat.keyframeUrls,
-          }))
+          const beats: StoryBeat[] = data.beats.map(
+            (
+              beat: {
+                id: number
+                beatId: string
+                label: string
+                desc: string
+                generatedIdea: string
+                duration: string
+                percentOfTotal: number
+                status: string
+                branches?: Array<{
+                  id: number
+                  branchId: string
+                  title: string
+                  desc: string
+                  type: string
+                  duration: string
+                  selected: boolean
+                  depth: number
+                }>
+                keyframeUrls?: string[]
+              },
+              idx: number,
+            ) => ({
+              id: idx + 1, // UI expects 1-indexed IDs
+              beatId: beat.beatId,
+              label: beat.label,
+              desc: beat.desc,
+              generatedIdea: beat.generatedIdea,
+              duration: beat.duration,
+              percentOfTotal:
+                beat.percentOfTotal || Math.round(100 / data.beats.length),
+              img: `linear-gradient(135deg, hsl(${180 + idx * 15}, 70%, ${15 + idx * 2}%), hsl(${195 + idx * 10}, 60%, ${10 + idx * 2}%))`,
+              status: beat.status,
+              branches: beat.branches?.map((b, bIdx) => ({
+                id: bIdx + 1, // Branch IDs also 1-indexed
+                title: b.title,
+                desc: b.desc,
+                type: b.type as "direct" | "hidden" | "sacrifice",
+                duration: b.duration,
+                selected: b.selected,
+                depth: b.depth,
+              })),
+              frames: beat.keyframeUrls,
+            }),
+          )
 
           setStoryBeats(beats)
           setSessionId(savedSessionId)
 
           // Restore progressive generation state from session data
           if (data.storyData?.storySeed) setStorySeed(data.storyData.storySeed)
-          if (data.storyData?.outcomeName) setOutcomeName(data.storyData.outcomeName)
+          if (data.storyData?.storyTitle)
+            setStoryTitle(data.storyData.storyTitle)
+          if (data.storyData?.storyLogline)
+            setStoryLogline(data.storyData.storyLogline)
+          if (data.storyData?.outcomeName)
+            setOutcomeName(data.storyData.outcomeName)
           else if (data.outcome) setOutcomeName(data.outcome)
-          if (data.referenceImageUrl) setReferenceImageUrl(data.referenceImageUrl)
+          const restoredReferenceImages = Array.isArray(data.referenceImages)
+            ? data.referenceImages
+            : []
+          if (data.referenceImageUrl)
+            setReferenceImageUrl(data.referenceImageUrl)
+          setReferenceImages(
+            restoredReferenceImages.length > 0
+              ? restoredReferenceImages
+              : data.referenceImageUrl
+                ? [data.referenceImageUrl]
+                : [],
+          )
+          if (Array.isArray(data.characters)) setCharacters(data.characters)
+          const currentBeat =
+            typeof data.currentBeat === "number" ? data.currentBeat : 0
+          setCurrentBeatIndex(
+            Math.max(0, Math.min(currentBeat, beats.length - 1)),
+          )
+          setSelectedBeatId(beats[currentBeat]?.id ?? beats[0]?.id ?? null)
 
           console.log(`✅ Loaded ${beats.length} beats from session`)
         } else {
           // Session not found or empty, clear and show modal
-          console.log('⚠️ Session not found or empty, starting fresh')
-          localStorage.removeItem('storyception_session')
+          console.log("⚠️ Session not found or empty, starting fresh")
+          localStorage.removeItem("storyception_session")
           setShowModal(true)
         }
       } catch (error) {
-        console.error('Failed to load session:', error)
-        localStorage.removeItem('storyception_session')
+        console.error("Failed to load session:", error)
+        localStorage.removeItem("storyception_session")
         setShowModal(true)
       }
-      
+
       setIsLoading(false)
     }
 
     loadExistingSession()
   }, [])
 
-  const handleGenerate = (beats: StoryBeat[], archIdx: number, refImageUrl?: string, storyId?: string, title?: string, logline?: string, seed?: string, outcome?: string) => {
+  const handleGenerate = (
+    beats: StoryBeat[],
+    archIdx: number,
+    refImageUrl?: string,
+    storyId?: string,
+    title?: string,
+    logline?: string,
+    seed?: string,
+    outcome?: string,
+    refs: string[] = [],
+    generatedCharacters: CharacterRecord[] = [],
+  ) => {
     setStoryBeats(beats)
     setShowModal(false)
     setCurrentBeatIndex(0)
     setArchetypeIndex(archIdx)
     if (refImageUrl) setReferenceImageUrl(refImageUrl)
+    setReferenceImages(
+      refs.length > 0 ? refs : refImageUrl ? [refImageUrl] : [],
+    )
+    setCharacters(generatedCharacters)
     if (storyId) setSessionId(storyId)
     if (title) setStoryTitle(title)
     if (logline) setStoryLogline(logline)
@@ -130,17 +179,32 @@ export default function StoryceptionPage() {
 
   const handleNewStory = () => {
     // Clear existing session and show modal
-    localStorage.removeItem('storyception_session')
+    localStorage.removeItem("storyception_session")
     setSessionId(null)
     setStoryBeats([])
+    setSelectedBeatId(null)
+    setCurrentBeatIndex(0)
+    setIsPlaying(false)
+    setReferenceImageUrl(null)
+    setReferenceImages([])
+    setCharacters([])
+    setStoryTitle("")
+    setStoryLogline("")
+    setStorySeed("")
+    setOutcomeName("")
     setShowModal(true)
   }
 
-  const handleUpdateBeat = useCallback((id: number, updates: Partial<StoryBeat>) => {
-    setStoryBeats((prev) => {
-      return prev.map((beat) => (beat.id === id ? { ...beat, ...updates } : beat))
-    })
-  }, [])
+  const handleUpdateBeat = useCallback(
+    (id: number, updates: Partial<StoryBeat>) => {
+      setStoryBeats((prev) => {
+        return prev.map((beat) =>
+          beat.id === id ? { ...beat, ...updates } : beat,
+        )
+      })
+    },
+    [],
+  )
 
   const handleSelectBeat = (id: number | null) => {
     setSelectedBeatId(id)
@@ -168,7 +232,8 @@ export default function StoryceptionPage() {
   useEffect(() => {
     if (isPlaying && storyBeats.length > 0) {
       const currentBeat = storyBeats[currentBeatIndex]
-      const duration = Number.parseFloat(currentBeat?.duration.replace("s", "") || "4") * 1000
+      const duration =
+        Number.parseFloat(currentBeat?.duration.replace("s", "") || "4") * 1000
 
       const timer = setTimeout(() => {
         if (currentBeatIndex < storyBeats.length - 1) {
@@ -191,9 +256,24 @@ export default function StoryceptionPage() {
       <div className="h-screen w-screen flex items-center justify-center bg-black">
         <div className="text-center">
           <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center animate-pulse">
-            <svg className="w-8 h-8 text-cyan-400 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <svg
+              className="w-8 h-8 text-cyan-400 animate-spin"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              ></circle>
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
             </svg>
           </div>
           <p className="text-zinc-400 text-sm">Loading story...</p>
@@ -205,10 +285,21 @@ export default function StoryceptionPage() {
   return (
     <div className="h-screen w-screen flex flex-col bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
       <AnimatePresence>
-        {showModal && <StoryOpeningPanel onClose={() => setShowModal(false)} onGenerate={handleGenerate} />}
+        {showModal && (
+          <StoryOpeningPanel
+            onClose={() => setShowModal(false)}
+            onGenerate={handleGenerate}
+          />
+        )}
       </AnimatePresence>
 
-      <Header onNewStory={handleNewStory} viewMode={viewMode} onToggleView={() => setViewMode(v => v === "flow" ? "cards" : "flow")} />
+      <Header
+        onNewStory={handleNewStory}
+        viewMode={viewMode}
+        onToggleView={() =>
+          setViewMode((v) => (v === "flow" ? "cards" : "flow"))
+        }
+      />
 
       {viewMode === "flow" ? (
         <FlowCanvas
@@ -217,6 +308,8 @@ export default function StoryceptionPage() {
           onSelectBeat={handleSelectBeat}
           onUpdateBeat={handleUpdateBeat}
           referenceImageUrl={referenceImageUrl}
+          referenceImages={referenceImages}
+          characters={characters}
           sessionId={sessionId}
           archetypeIndex={archetypeIndex}
           storyTitle={storyTitle}
