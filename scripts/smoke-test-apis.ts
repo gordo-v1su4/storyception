@@ -2,6 +2,8 @@
  * Smoke-test Storyception API routes against a running dev server.
  * Usage: `bun run smoke` (ensure `bun run dev` is up and `.env.local` has keys).
  */
+import { existsSync } from 'node:fs'
+
 const BASE = (process.env.SMOKE_BASE_URL ?? 'http://localhost:3000').replace(/\/+$/, '')
 
 const TIMEOUT_SHORT = 30_000
@@ -12,11 +14,34 @@ const TIMEOUT_IMAGE = 180_000
 const TINY_PNG_B64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 
-type Row = { name: string; ok: boolean; status: number; detail: string }
+type Row = { name: string; ok: boolean; status: number | 'SKIP' | 'CHECK'; detail: string; skipped?: boolean }
 
-function row(name: string, ok: boolean, status: number, detail: string): Row {
+function row(name: string, ok: boolean, status: number | 'CHECK', detail: string): Row {
   return { name, ok, status, detail }
 }
+
+function skipRow(name: string, detail: string): Row {
+  return { name, ok: true, status: 'SKIP', detail, skipped: true }
+}
+
+const HAS_GEMINI_API_KEY = Boolean(
+  process.env.GOOGLE_CLOUD_API_KEY ||
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+    process.env.GOOGLE_GENAI_API_KEY ||
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY
+)
+
+const RUN_HEAVY_SMOKE = process.env.STORYCEPTION_SMOKE_HEAVY === '1' || HAS_GEMINI_API_KEY
+const RUN_CHARACTER_SMOKE = process.env.STORYCEPTION_SMOKE_CHARACTERS === '1'
+const RUN_CHARACTER_IMAGE_SMOKE = process.env.STORYCEPTION_SMOKE_CHARACTER_IMAGES === '1'
+const SMOKE_REFERENCE_IMAGE_URL = process.env.SMOKE_REFERENCE_IMAGE_URL
+
+const CHARACTER_ROUTE_FILES = [
+  'app/api/characters/detect/route.ts',
+  'app/api/characters/sheet/route.ts',
+  'app/api/characters/looksheet/route.ts',
+]
 
 async function fetchJson(
   path: string,
@@ -42,6 +67,16 @@ async function fetchJson(
 
 async function main(): Promise<void> {
   const results: Row[] = []
+
+  const missingCharacterRoutes = CHARACTER_ROUTE_FILES.filter((route) => !existsSync(route))
+  results.push(
+    missingCharacterRoutes.length === 0
+      ? row('CHECK character API route files', true, 'CHECK', CHARACTER_ROUTE_FILES.join(', '))
+      : skipRow(
+          'CHECK character API route files',
+          `pending integration: missing ${missingCharacterRoutes.join(', ')}`
+        )
+  )
 
   // --- GET: metadata / health-style ---
   {
@@ -98,6 +133,11 @@ async function main(): Promise<void> {
   }
 
   // --- POST: Gemini branch pack (no n8n by default) ---
+  if (!RUN_HEAVY_SMOKE) {
+    results.push(skipRow('POST /api/branches/generate', 'set a Gemini API key or STORYCEPTION_SMOKE_HEAVY=1 to run LLM smoke'))
+    results.push(skipRow('POST /api/story/beat', 'set a Gemini API key or STORYCEPTION_SMOKE_HEAVY=1 to run LLM smoke'))
+    results.push(skipRow('POST /api/images/generate', 'set a Gemini API key or STORYCEPTION_SMOKE_HEAVY=1 to run image smoke'))
+  } else {
   {
     const { res, json } = await fetchJson(
       '/api/branches/generate',
@@ -158,6 +198,7 @@ async function main(): Promise<void> {
               selectedBranch: 'Take the risky path',
             },
           ],
+          characters: [],
         }),
       },
       TIMEOUT_LLM
@@ -188,6 +229,7 @@ async function main(): Promise<void> {
           sessionId: 'smoke-session',
           beatId: 'smoke-beat-img',
           referenceImageBase64: TINY_PNG_B64,
+          referenceImages: [`data:image/png;base64,${TINY_PNG_B64}`],
           beatLabel: 'Smoke',
           beatDescription: 'Test grid',
           keyframePrompts: Array.from(
@@ -212,6 +254,8 @@ async function main(): Promise<void> {
     )
   }
 
+  }
+
   // --- POST: multipart upload (dev: data URLs when no MEDIA_API_TOKEN) ---
   {
     const form = new FormData()
@@ -224,6 +268,10 @@ async function main(): Promise<void> {
   }
 
   // --- POST: ADK story/branches (workflow + optional NocoDB) ---
+  if (!RUN_HEAVY_SMOKE) {
+    results.push(skipRow('POST /api/story/branches', 'set a Gemini API key or STORYCEPTION_SMOKE_HEAVY=1 to run workflow smoke'))
+    results.push(skipRow('POST /api/story/generate', 'set a Gemini API key or STORYCEPTION_SMOKE_HEAVY=1 to run full story smoke'))
+  } else {
   {
     const { res, json } = await fetchJson(
       '/api/story/branches',
@@ -265,6 +313,7 @@ async function main(): Promise<void> {
           archetypeName: 'Hero Journey',
           outcomeName: 'Happy Ending',
           referenceImages: [],
+          characters: [],
         }),
       },
       TIMEOUT_LLM * 2
@@ -281,18 +330,103 @@ async function main(): Promise<void> {
     )
   }
 
+  }
+
+  if (!RUN_CHARACTER_SMOKE) {
+    results.push(skipRow('POST /api/characters/detect', 'set STORYCEPTION_SMOKE_CHARACTERS=1 with SMOKE_REFERENCE_IMAGE_URL to run character detection smoke'))
+    results.push(skipRow('POST /api/characters/sheet + /looksheet', 'set STORYCEPTION_SMOKE_CHARACTER_IMAGES=1 with SMOKE_REFERENCE_IMAGE_URL to run character image smoke'))
+  } else if (missingCharacterRoutes.length > 0) {
+    results.push(skipRow('POST /api/characters/*', `character routes not present yet: ${missingCharacterRoutes.join(', ')}`))
+  } else if (!RUN_HEAVY_SMOKE || !SMOKE_REFERENCE_IMAGE_URL) {
+    results.push(skipRow('POST /api/characters/detect', 'requires Gemini API key plus SMOKE_REFERENCE_IMAGE_URL'))
+  } else {
+    const sessionId = `smoke-${Date.now()}`
+    const characterId = `${sessionId}-character-1`
+    const { res, json } = await fetchJson(
+      '/api/characters/detect',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, imageUrls: [SMOKE_REFERENCE_IMAGE_URL] }),
+      },
+      TIMEOUT_LLM
+    )
+    const j = json as { candidates?: unknown[] }
+    const ok = res.ok && Array.isArray(j?.candidates)
+    results.push(
+      row(
+        'POST /api/characters/detect',
+        ok,
+        res.status,
+        ok ? `candidates=${j.candidates!.length}` : JSON.stringify(json).slice(0, 280)
+      )
+    )
+
+    if (!RUN_CHARACTER_IMAGE_SMOKE) {
+      results.push(skipRow('POST /api/characters/sheet + /looksheet', 'set STORYCEPTION_SMOKE_CHARACTER_IMAGES=1 to run image-generation character sheet smoke'))
+    } else {
+      const commonCharacterBody = {
+        sessionId,
+        characterId,
+        name: 'Smoke Character',
+        descriptor: 'A concise smoke-test character descriptor',
+        sourceImageUrl: SMOKE_REFERENCE_IMAGE_URL,
+      }
+
+      const sheet = await fetchJson(
+        '/api/characters/sheet',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(commonCharacterBody),
+        },
+        TIMEOUT_IMAGE
+      )
+      const sheetJson = sheet.json as { sheetImageUrl?: string }
+      results.push(
+        row(
+          'POST /api/characters/sheet',
+          sheet.res.ok && typeof sheetJson?.sheetImageUrl === 'string',
+          sheet.res.status,
+          sheetJson?.sheetImageUrl ?? JSON.stringify(sheet.json).slice(0, 280)
+        )
+      )
+
+      const looksheet = await fetchJson(
+        '/api/characters/looksheet',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...commonCharacterBody, wardrobeLabel: 'Default' }),
+        },
+        TIMEOUT_IMAGE
+      )
+      const looksheetJson = looksheet.json as { lookSheetImageUrl?: string; lookLabel?: string }
+      results.push(
+        row(
+          'POST /api/characters/looksheet',
+          looksheet.res.ok && typeof looksheetJson?.lookSheetImageUrl === 'string',
+          looksheet.res.status,
+          looksheetJson?.lookLabel ? `${looksheetJson.lookLabel}: ${looksheetJson.lookSheetImageUrl}` : JSON.stringify(looksheet.json).slice(0, 280)
+        )
+      )
+    }
+  }
+
   const failed = results.filter((r) => !r.ok)
   console.log('\n=== Storyception API smoke test ===\n')
   for (const r of results) {
-    const mark = r.ok ? 'PASS' : 'FAIL'
-    console.log(`${mark}  ${r.name}  HTTP ${r.status}  ${r.detail}`)
+    const mark = r.skipped ? 'SKIP' : r.ok ? 'PASS' : 'FAIL'
+    const status = typeof r.status === 'number' ? `HTTP ${r.status}` : r.status
+    console.log(`${mark}  ${r.name}  ${status}  ${r.detail}`)
   }
   console.log('')
   if (failed.length) {
     console.error(`Failed: ${failed.length}/${results.length}`)
     process.exit(1)
   }
-  console.log(`All ${results.length} checks passed.`)
+  const skipped = results.filter((r) => r.skipped).length
+  console.log(`All ${results.length - skipped} runnable checks passed; ${skipped} skipped.`)
 }
 
 main().catch((e) => {
