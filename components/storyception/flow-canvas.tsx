@@ -589,6 +589,15 @@ function FlowCanvasInner({
               onUpdateBeat(beat.id, { status: "ready" })
             }
           },
+          onGenerateKeyframes: async () => {
+            onUpdateBeat(beat.id, { status: "generating" })
+            const keyframes = await generateKeyframes(beat)
+            if (keyframes && keyframes.length > 0) {
+              onUpdateBeat(beat.id, { frames: keyframes, status: "ready" })
+            } else {
+              onUpdateBeat(beat.id, { status: "ready" })
+            }
+          },
         },
       })
 
