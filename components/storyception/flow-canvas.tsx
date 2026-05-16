@@ -854,6 +854,7 @@ function FlowCanvasInner({
     toggleBranch,
     handleSelectBranch,
     generateKeyframeOptions,
+    generateKeyframes,
     archetypeIndex,
     sessionId,
     storyLogline,
