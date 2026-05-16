@@ -19,14 +19,26 @@ interface StoryBeatNodeData {
   onToggleBranch: () => void
   onUpdateBeat: (updates: Partial<StoryBeat>) => void
   onGenerateOptions?: () => Promise<void>
+  onGenerateKeyframes?: () => Promise<void>
 }
 
 export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
-  const { beat, isSelected, isExpanded, layout = "horizontal", onSelect, onToggleBranch, onUpdateBeat, onGenerateOptions } = data
+  const {
+    beat,
+    isSelected,
+    isExpanded,
+    layout = "horizontal",
+    onSelect,
+    onToggleBranch,
+    onUpdateBeat,
+    onGenerateOptions,
+    onGenerateKeyframes,
+  } = data
   const beatIndex = beat.id - 1
   const totalBeats = 15
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const [isGeneratingOptions, setIsGeneratingOptions] = useState(false)
+  const [isGeneratingKeyframes, setIsGeneratingKeyframes] = useState(false)
   
   // Get frames from beat or use placeholders
   const frames = beat.frames || []
@@ -199,7 +211,7 @@ export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
               )}
 
               {/* 2x2 option-grid button */}
-              {!hasFrames && (
+              {!hasFrames && !hasOptions && (
                 <motion.button
                   whileTap={{ scale: 0.95 }}
                   disabled={!onGenerateOptions || isGeneratingOptions || isGenerating}
@@ -218,6 +230,29 @@ export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
                 >
                   {isGeneratingOptions ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
                   2x2
+                </motion.button>
+              )}
+
+              {/* 3x3 expansion button after a 2x2 option is selected */}
+              {!hasFrames && hasOptions && (
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  disabled={!onGenerateKeyframes || isGeneratingKeyframes || isGenerating}
+                  onClick={async (e) => {
+                    e.stopPropagation()
+                    if (!onGenerateKeyframes || isGeneratingKeyframes) return
+                    setIsGeneratingKeyframes(true)
+                    try {
+                      await onGenerateKeyframes()
+                    } finally {
+                      setIsGeneratingKeyframes(false)
+                    }
+                  }}
+                  className="text-[10px] px-2.5 py-2 font-bold uppercase flex items-center gap-1.5 transition-all shrink-0 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-40"
+                  title="Expand the selected 2x2 option into one native 4K 3x3 storyboard grid"
+                >
+                  {isGeneratingKeyframes ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                  3x3
                 </motion.button>
               )}
 
