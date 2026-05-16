@@ -15,9 +15,10 @@ import {
   generateKeyframeId,
 } from '@/lib/nocodb'
 import { createGeminiClient } from '@/lib/gemini-client'
-import { GEMINI_MODEL_PRO } from '@/lib/gemini-models'
+import { getBranchNarrativeModel } from '@/lib/gemini-models'
 import { getGeminiApiKey } from '@/lib/gemini-api-key'
 import type { CharacterRecord } from '@/lib/storyception-schema'
+import { CURRENT_ZEITGEIST_DIRECTIVE, CURRENT_VISUAL_DIRECTIVE } from '@/lib/zeitgeist'
 
 export interface ProgressiveBeatRequest {
   sessionId: string
@@ -106,6 +107,9 @@ NOW GENERATE THE NEXT BEAT:
 Beat ${beatIndex + 1}: ${beatLabel}
 Structure role: ${beatStructureDesc}
 
+${CURRENT_ZEITGEIST_DIRECTIVE}
+${CURRENT_VISUAL_DIRECTIVE}
+
 Requirements:
 1. The scene MUST continue directly from the player's branch choice — the branch decision should have clear narrative consequences
 2. Write a vivid scene description (2-3 sentences) that advances the story
@@ -138,7 +142,7 @@ Generate the beat now.`
     let textContent: string
     try {
       const res = await ai.models.generateContent({
-        model: GEMINI_MODEL_PRO,
+        model: getBranchNarrativeModel(),
         contents: createUserContent(createPartFromText(prompt)),
         config: {
           abortSignal,
@@ -200,6 +204,7 @@ Generate the beat now.`
     const durationSeconds = beatData.duration_seconds || 6
     const keyframePrompts = (beatData.keyframe_prompts || []).slice(0, 9)
 
+    let persistenceWarning: string | undefined
     try {
       await updateBeat(beatId, {
         description: sceneDescription,
@@ -225,15 +230,7 @@ Generate the beat now.`
     } catch (nocoErr) {
       console.error('⚠️ Failed to save progressive beat to NocoDB:', nocoErr)
       const nocoMessage = nocoErr instanceof Error ? nocoErr.message : 'Unknown NocoDB error'
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Failed to persist generated beat data',
-          details: nocoMessage,
-          beatId,
-        },
-        { status: 500 }
-      )
+      persistenceWarning = nocoMessage
     }
 
     return NextResponse.json({
@@ -242,6 +239,7 @@ Generate the beat now.`
       scene_description: sceneDescription,
       keyframe_prompts: keyframePrompts,
       duration_seconds: durationSeconds,
+      persistenceWarning,
     })
   } catch (error) {
     console.error('Progressive beat generation error:', error)

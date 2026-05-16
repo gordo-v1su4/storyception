@@ -151,8 +151,9 @@ async function main(): Promise<void> {
           storyId: 'smoke-story',
           beatId: 'smoke-beat-1',
           beatLabel: 'Smoke beat',
-          currentContext: 'A hero stands at a fork in the road.',
-          archetype: 'Hero journey',
+          currentContext:
+            'Zayn Amari, a guarded heir in a desert-futurist city, discovers his family relic is broadcasting a forbidden confession.',
+          archetype: 'Prestige hero journey',
           outcome: 'Happy Ending',
         }),
       },
@@ -185,19 +186,26 @@ async function main(): Promise<void> {
           beatStructureDesc: 'Obstacles emerge',
           archetypeName: 'Test archetype',
           outcomeName: 'Happy Ending',
-          storyTitle: 'Smoke Test Tale',
-          storyLogline: 'A test story',
-          storySeed: 'Curiosity drives the hero forward',
+          storyTitle: 'The Inheritance Protocol',
+          storyLogline: 'A reluctant heir weaponizes a family relic before his city crowns the wrong monster.',
+          storySeed:
+            'In a sun-blasted futurist capital, Zayn Amari inherits a ceremonial dagger that secretly records every betrayal in his bloodline. The opening arc should feel like a prestige streaming thriller with award-season performances, tactile wardrobe, and a reversal that turns inheritance into a trap.',
           selectedBranch: {
             title: 'Take the risky path',
             description: 'The hero chooses danger for a chance at truth',
             type: 'discovery',
           },
           previousBeats: [
-            { label: 'Ordinary world', description: 'Quiet morning', selectedBranch: 'Wake up' },
+            {
+              label: 'Ordinary world',
+              description:
+                'Zayn moves through a candlelit palace corridor while cameras outside broadcast the succession ceremony.',
+              selectedBranch: 'Keep the relic hidden',
+            },
             {
               label: 'Call',
-              description: 'A message arrives',
+              description:
+                'The dagger projects a dead witness naming Zayn as both heir and prime suspect.',
               selectedBranch: 'Take the risky path',
             },
           ],
@@ -233,11 +241,13 @@ async function main(): Promise<void> {
           beatId: 'smoke-beat-img',
           referenceImageBase64: TINY_PNG_B64,
           referenceImages: [`data:image/png;base64,${TINY_PNG_B64}`],
-          beatLabel: 'Smoke',
-          beatDescription: 'Test grid',
+          beatLabel: 'Inheritance reveal',
+          beatDescription:
+            'A desert-futurist heir steps through a practical-lit portal as a family relic exposes the lie behind his coronation.',
           keyframePrompts: Array.from(
             { length: 9 },
-            (_, i) => `Panel ${i + 1}: abstract color field, soft light, minimal composition`
+            (_, i) =>
+              `Panel ${i + 1}: premium cinematic production still of Zayn Amari, Afro-Arab desert-futurist heir, real actor presence, tactile layered textiles, warm practical palace light, shallow depth of field, edge-of-seat succession-thriller tension, no cardboard, no construction-paper, no cartoon.`
           ),
         }),
       },
@@ -313,8 +323,8 @@ async function main(): Promise<void> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           archetypeIndex: 0,
-          archetypeName: 'Hero Journey',
-          outcomeName: 'Happy Ending',
+        archetypeName: 'Prestige Hero Journey',
+        outcomeName: 'Happy Ending',
           referenceImages: [],
           characters: [],
         }),

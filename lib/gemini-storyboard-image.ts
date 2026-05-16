@@ -51,7 +51,9 @@ export function buildStoryboardImageGenerationConfig(
 }
 
 /**
- * Single 3x3 storyboard grid as base64 (PNG), matching Colab native image flow.
+ * Single native 4K storyboard grid as base64 (PNG), matching Colab native image flow.
+ * The prompt owns whether this is a 2x2 option board or a 3x3 storyboard board;
+ * callers must split the one returned composite image into equal cells.
  * Supports the legacy single-reference call shape and v1 multi-reference contract.
  */
 export async function generateStoryboardGridBase64(params: GenerateStoryboardParams): Promise<string> {

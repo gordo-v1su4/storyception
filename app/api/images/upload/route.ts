@@ -1,9 +1,22 @@
 import { NextRequest, NextResponse } from "next/server"
+import sharp from "sharp"
 import { uploadBufferViaMediaApi } from "@/lib/object-storage"
 
-function inlineDataUrlFromFile(file: File, buffer: Buffer): string {
-  const mime = file.type || "image/png"
-  return `data:${mime};base64,${buffer.toString("base64")}`
+async function inlineDataUrlFromFile(file: File, buffer: Buffer): Promise<string> {
+  let mime = file.type || "image/png"
+  let out = buffer
+  if (process.env.NODE_ENV === "development") {
+    try {
+      out = await sharp(buffer)
+        .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 86 })
+        .toBuffer()
+      mime = "image/jpeg"
+    } catch (error) {
+      console.warn("Failed to downscale inline dev upload; using original file:", error)
+    }
+  }
+  return `data:${mime};base64,${out.toString("base64")}`
 }
 
 export async function POST(request: NextRequest) {
@@ -31,7 +44,7 @@ export async function POST(request: NextRequest) {
       for (const file of files) {
         if (!(file instanceof File)) continue
         const arrayBuffer = await file.arrayBuffer()
-        urls.push(inlineDataUrlFromFile(file, Buffer.from(arrayBuffer)))
+        urls.push(await inlineDataUrlFromFile(file, Buffer.from(arrayBuffer)))
       }
       if (urls.length === 0) {
         return NextResponse.json({ success: false, error: "No valid image files" }, { status: 400 })

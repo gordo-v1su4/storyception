@@ -180,6 +180,70 @@ function FlowCanvasInner({
 
   // Generate keyframes for a beat using the on-demand image generation API
   // branchContext: optional context from the selected branch that leads INTO this beat
+  const generateKeyframeOptions = useCallback(
+    async (
+      beat: StoryBeat,
+      branchContext?: { title: string; description: string },
+    ): Promise<string[] | null> => {
+      if (!sessionId || orderedReferenceImages.length === 0) {
+        console.log(
+          "⚠️ No session ID or reference images, skipping option generation",
+        )
+        return null
+      }
+
+      try {
+        console.log(
+          `🎞️ Generating 2x2 options for beat: ${beat.label}${branchContext ? ` (after branch: ${branchContext.title})` : ""}`,
+        )
+
+        const response = await fetch("/api/images/options", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId,
+            beatId: beat.beatId || `beat-${beat.id}`,
+            referenceImageUrl: orderedReferenceImages[0],
+            referenceImages: orderedReferenceImages,
+            optionPrompts: (beat.keyframePrompts ?? []).slice(0, 4),
+            beatLabel: beat.label,
+            beatDescription: beat.desc || beat.generatedIdea || "",
+            branchContext: branchContext
+              ? `The player chose: "${branchContext.title}" — ${branchContext.description}`
+              : undefined,
+          }),
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error(
+            `Image option generation failed [${response.status}]:`,
+            errorText,
+          )
+          return null
+        }
+
+        const result = await response.json()
+        const optionFrameUrls = result.optionFrameUrls ?? result.options
+
+        if (result.success && Array.isArray(optionFrameUrls) && optionFrameUrls.length === 4) {
+          console.log("✅ Got 4 option frames from one 4K 2x2 grid")
+          return optionFrameUrls
+        }
+
+        console.log(
+          "⚠️ No option frames in response:",
+          JSON.stringify(result).substring(0, 200),
+        )
+        return null
+      } catch (error) {
+        console.error("Keyframe option generation error:", error)
+        return null
+      }
+    },
+    [sessionId, orderedReferenceImages],
+  )
+
   const generateKeyframes = useCallback(
     async (
       beat: StoryBeat,
@@ -197,6 +261,14 @@ function FlowCanvasInner({
           `🎬 Generating keyframes for beat: ${beat.label}${branchContext ? ` (after branch: ${branchContext.title})` : ""}`,
         )
 
+        const selectedOptionFrame =
+          typeof beat.selectedOptionIndex === "number"
+            ? beat.optionFrames?.[beat.selectedOptionIndex]
+            : undefined
+        const storyboardReferences = selectedOptionFrame
+          ? [...orderedReferenceImages, selectedOptionFrame]
+          : orderedReferenceImages
+
         const response = await fetch("/api/images/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -204,7 +276,7 @@ function FlowCanvasInner({
             sessionId,
             beatId: beat.beatId || `beat-${beat.id}`,
             referenceImageUrl: orderedReferenceImages[0],
-            referenceImages: orderedReferenceImages,
+            referenceImages: storyboardReferences,
             keyframePrompts: beat.keyframePrompts ?? [],
             beatLabel: beat.label,
             beatDescription: beat.desc || beat.generatedIdea || "",
@@ -212,7 +284,9 @@ function FlowCanvasInner({
             beatPercent: beat.percentOfTotal,
             branchContext: branchContext
               ? `The player chose: "${branchContext.title}" — ${branchContext.description}`
-              : undefined,
+              : selectedOptionFrame
+                ? `Expand selected 2x2 option ${((beat.selectedOptionIndex ?? 0) + 1).toString()} into the full 3x3 storyboard board.`
+                : undefined,
           }),
         })
 
@@ -502,6 +576,19 @@ function FlowCanvasInner({
           },
           onUpdateBeat: (updates: Partial<StoryBeat>) =>
             onUpdateBeat(beat.id, updates),
+          onGenerateOptions: async () => {
+            onUpdateBeat(beat.id, { status: "generating" })
+            const optionFrames = await generateKeyframeOptions(beat)
+            if (optionFrames && optionFrames.length === 4) {
+              onUpdateBeat(beat.id, {
+                optionFrames,
+                selectedOptionIndex: beat.selectedOptionIndex ?? 0,
+                status: "ready",
+              })
+            } else {
+              onUpdateBeat(beat.id, { status: "ready" })
+            }
+          },
         },
       })
 
@@ -757,6 +844,7 @@ function FlowCanvasInner({
     onUpdateBeat,
     toggleBranch,
     handleSelectBranch,
+    generateKeyframeOptions,
     archetypeIndex,
     sessionId,
     storyLogline,
@@ -867,6 +955,11 @@ function FlowCanvasInner({
   const getMiniMapBeatColor = (index: number, total: number) => {
     return getBeatHexColor(index, total)
   }
+
+  const persistentCharacters = useMemo(
+    () => characters.filter((character) => character.kind === "character"),
+    [characters],
+  )
 
   const resetView = useCallback(() => {
     setNodes([...initialNodes])
@@ -1093,6 +1186,63 @@ function FlowCanvasInner({
             </div>
           </div>
         </Panel>
+
+        {/* Persistent compact character reference strip */}
+        {persistentCharacters.length > 0 && (
+          <Panel position="top-right" className="!m-4">
+            <div className="w-[300px] rounded-xl border border-purple-400/30 bg-zinc-950/95 shadow-2xl backdrop-blur-sm overflow-hidden">
+              <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between">
+                <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-purple-200">
+                  Character refs
+                </span>
+                <span className="text-[9px] font-mono text-zinc-500">
+                  persistent
+                </span>
+              </div>
+              <div className="max-h-[260px] overflow-y-auto p-2 space-y-2">
+                {persistentCharacters.map((character) => {
+                  const thumbnail =
+                    character.look_sheet_image_url ||
+                    character.sheet_image_url ||
+                    character.source_image_url ||
+                    ""
+                  return (
+                    <div
+                      key={character.character_id}
+                      className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/80 p-2"
+                    >
+                      <div
+                        className="h-14 w-20 shrink-0 rounded-md border border-zinc-700 bg-zinc-800 bg-cover bg-center"
+                        style={thumbnail ? { backgroundImage: `url(${thumbnail})` } : undefined}
+                        aria-label={`${character.name} compact character reference`}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[11px] font-semibold text-zinc-100">
+                          {character.name}
+                        </div>
+                        <div className="mt-0.5 line-clamp-2 text-[9px] leading-snug text-zinc-500">
+                          {character.descriptor || "Locked character identity"}
+                        </div>
+                        <div className="mt-1 flex gap-1 text-[8px] uppercase tracking-wide">
+                          {character.sheet_image_url && (
+                            <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-purple-200">
+                              4K sheet
+                            </span>
+                          )}
+                          {character.look_sheet_image_url && (
+                            <span className="rounded bg-cyan-500/15 px-1.5 py-0.5 text-cyan-200">
+                              look
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </Panel>
+        )}
 
         {/* Legend Panel */}
         <Panel position="bottom-left" className="!m-4">

@@ -17,7 +17,7 @@ import {
   type OpeningOutcome,
 } from "@/lib/story-opening-data"
 import { archetypes, outcomes } from "@/lib/data"
-import type { StoryBeat } from "@/lib/types"
+import type { StoryBeat, StoryConceptPitch } from "@/lib/types"
 import { getBeatPercentage } from "@/lib/story-generator"
 import type { CharacterKind, CharacterRecord } from "@/lib/storyception-schema"
 import {
@@ -42,6 +42,8 @@ type PendingStoryGeneration = {
   apiIndex: number
   outcomeTitle: string
 }
+
+type PitchSheetState = "idle" | "working" | "done" | "error"
 
 const createDraftSessionId = () =>
   `session-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
@@ -137,7 +139,14 @@ export function StoryOpeningPanel({
     Record<string, CharacterSheetProgress>
   >({})
   const [sheetError, setSheetError] = useState<string | null>(null)
+  const [conceptPitches, setConceptPitches] = useState<StoryConceptPitch[]>([])
+  const [pitchError, setPitchError] = useState<string | null>(null)
+  const [backgroundCharacters, setBackgroundCharacters] = useState<
+    CharacterRecord[]
+  >([])
+  const [sheetState, setSheetState] = useState<PitchSheetState>("idle")
   const fileRef = useRef<HTMLInputElement>(null)
+  const sheetsPromiseRef = useRef<Promise<CharacterRecord[]> | null>(null)
   const imagesRef = useRef(images)
   imagesRef.current = images
 
@@ -181,6 +190,11 @@ export function StoryOpeningPanel({
     setCharacterDrafts([])
     setSheetProgress({})
     setSheetError(null)
+    setConceptPitches([])
+    setPitchError(null)
+    setBackgroundCharacters([])
+    setSheetState("idle")
+    sheetsPromiseRef.current = null
   }, [])
 
   const handleFiles = (files: FileList | null) => {
@@ -244,6 +258,7 @@ export function StoryOpeningPanel({
   const generateStoryFromReferences = async (
     story: PendingStoryGeneration,
     characters: CharacterRecord[] = [],
+    conceptPitch?: StoryConceptPitch,
   ) => {
     const arch = archetypes[story.apiIndex]
     const response = await fetch("/api/story/generate", {
@@ -257,6 +272,7 @@ export function StoryOpeningPanel({
         referenceImages: story.uploadedUrls,
         referenceAssets: story.uploadedAssets,
         characters,
+        conceptPitch,
         totalDuration: 90,
       }),
     })
@@ -290,6 +306,11 @@ export function StoryOpeningPanel({
     setCharacterDrafts([])
     setSheetProgress({})
     setSheetError(null)
+    setConceptPitches([])
+    setPitchError(null)
+    setBackgroundCharacters([])
+    setSheetState("idle")
+    sheetsPromiseRef.current = null
     setIsGenerating(false)
     onClose()
   }
@@ -336,6 +357,157 @@ export function StoryOpeningPanel({
       .filter((candidate: CharacterDetectionCandidate) => candidate.imageUrl)
   }
 
+  const generateConceptPitches = async (
+    story: PendingStoryGeneration,
+    drafts: CharacterConfirmationDraft[],
+  ) => {
+    const arch = archetypes[story.apiIndex]
+    const response = await fetch("/api/story/pitches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: story.sessionId,
+        archetypeName: arch.title,
+        outcomeName: story.outcomeTitle,
+        referenceImages: story.uploadedUrls,
+        characterDrafts: drafts,
+      }),
+    })
+    const data = await response.json()
+    if (!response.ok || !data.success || !Array.isArray(data.pitches)) {
+      throw new Error(data.error || "Story pitch generation failed")
+    }
+    return data.pitches as StoryConceptPitch[]
+  }
+
+  const generateCharacterSheets = async (
+    story: PendingStoryGeneration,
+    drafts: CharacterConfirmationDraft[],
+  ): Promise<CharacterRecord[]> => {
+    const characterDraftsOnly = drafts.filter(
+      (draft) => draft.kind === "character",
+    )
+    if (characterDraftsOnly.length === 0) return []
+
+    const completed: CharacterRecord[] = []
+    for (const [index, draft] of characterDraftsOnly.entries()) {
+      setSheetProgress((prev) => ({
+        ...prev,
+        [draft.id]: { phase: "sheet", message: "Making annotated sheet…" },
+      }))
+
+      const characterId = `${story.sessionId}-char-${index}`
+      const sheetResponse = await fetch("/api/characters/sheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: story.sessionId,
+          characterId,
+          name: draft.name.trim() || `Character ${index + 1}`,
+          kind: draft.kind,
+          descriptor: draft.descriptor.trim(),
+          sourceImageUrl: draft.imageUrl,
+          imageUrl: draft.imageUrl,
+        }),
+      })
+      const sheetData = await sheetResponse.json()
+      if (!sheetResponse.ok || !sheetData.success) {
+        throw new Error(
+          sheetData.error || `Sheet generation failed for ${draft.name}`,
+        )
+      }
+
+      const sheetCharacter = extractCharacter(sheetData)
+      const resolvedCharacterId =
+        sheetCharacter?.character_id || sheetData.characterId || characterId
+
+      setSheetProgress((prev) => ({
+        ...prev,
+        [draft.id]: {
+          phase: "looksheet",
+          message: "Making clean look sheet…",
+        },
+      }))
+
+      const lookResponse = await fetch("/api/characters/looksheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: story.sessionId,
+          characterId: resolvedCharacterId,
+          name: draft.name.trim() || `Character ${index + 1}`,
+          descriptor: draft.descriptor.trim(),
+          sourceImageUrl: draft.imageUrl,
+          imageUrl: draft.imageUrl,
+          sheetImageUrl: sheetData.sheetImageUrl || sheetCharacter?.sheet_image_url,
+          lookLabel: "Default",
+        }),
+      })
+      const lookData = await lookResponse.json()
+      if (!lookResponse.ok || !lookData.success) {
+        throw new Error(
+          lookData.error || `Look sheet generation failed for ${draft.name}`,
+        )
+      }
+
+      const lookCharacter = extractCharacter(lookData) || sheetCharacter
+      if (lookCharacter) completed.push(lookCharacter)
+
+      setSheetProgress((prev) => ({
+        ...prev,
+        [draft.id]: { phase: "done", message: "Sheets ready" },
+      }))
+    }
+
+    return completed
+  }
+
+  const startBackgroundCharacterSheets = (
+    story: PendingStoryGeneration,
+    drafts: CharacterConfirmationDraft[],
+  ) => {
+    const hasCharacters = drafts.some((draft) => draft.kind === "character")
+    if (!hasCharacters) {
+      setSheetState("idle")
+      sheetsPromiseRef.current = null
+      return
+    }
+
+    setSheetState("working")
+    setSheetError(null)
+    const promise = generateCharacterSheets(story, drafts)
+      .then((records) => {
+        setBackgroundCharacters(records)
+        setSheetState("done")
+        return records
+      })
+      .catch((err) => {
+        console.error("Background character sheet flow error:", err)
+        const message =
+          err instanceof Error ? err.message : "Failed to make character sheets"
+        setSheetError(`${message}. Story can still continue with raw references.`)
+        setSheetState("error")
+        return []
+      })
+    sheetsPromiseRef.current = promise
+  }
+
+  const chooseConceptPitch = async (pitch: StoryConceptPitch) => {
+    if (!pendingStory) return
+    setIsGenerating(true)
+    setPitchError(null)
+    try {
+      const sheetCharacters = sheetsPromiseRef.current
+        ? await sheetsPromiseRef.current
+        : backgroundCharacters
+      await generateStoryFromReferences(pendingStory, sheetCharacters, pitch)
+    } catch (err) {
+      console.error("Pitch story generation error:", err)
+      setPitchError(err instanceof Error ? err.message : "Failed to generate story")
+      setIsGenerating(false)
+    }
+  }
+
   const handleGenerate = async () => {
     if (!archetype || !outcome || images.length === 0) return
 
@@ -353,6 +525,11 @@ export function StoryOpeningPanel({
     setIsGenerating(true)
     setError(null)
     setSheetError(null)
+    setPitchError(null)
+    setConceptPitches([])
+    setBackgroundCharacters([])
+    setSheetState("idle")
+    sheetsPromiseRef.current = null
 
     try {
       const draftSessionId = createDraftSessionId()
@@ -381,28 +558,32 @@ export function StoryOpeningPanel({
         outcomeTitle: outcomes[outIdx].title,
       }
 
+      let candidates: CharacterDetectionCandidate[] = []
+      let drafts: CharacterConfirmationDraft[] = []
       try {
-        const candidates = await detectCharacters(story.sessionId, uploadedUrls)
-        const likelyCharacters = candidates.filter(
-          (candidate) =>
-            candidate.kind === "character" && (candidate.confidence ?? 0) > 0.6,
-        )
-        if (likelyCharacters.length > 0) {
-          setPendingStory(story)
-          setCharacterCandidates(candidates)
-          setCharacterDrafts(buildCharacterDrafts(candidates))
-          setSheetProgress({})
-          setIsGenerating(false)
-          return
-        }
+        candidates = await detectCharacters(story.sessionId, uploadedUrls)
+        drafts = buildCharacterDrafts(candidates)
       } catch (detectError) {
         console.warn(
-          "Character detection unavailable; generating with raw references:",
+          "Character detection unavailable; continuing with pitch selection:",
           detectError,
         )
       }
 
-      await generateStoryFromReferences(story)
+      const pitches = await generateConceptPitches(story, drafts)
+      setPendingStory(story)
+      setCharacterCandidates(candidates)
+      setCharacterDrafts(drafts)
+      setSheetProgress({})
+      setConceptPitches(pitches)
+      setIsGenerating(false)
+
+      const likelyCharacterDrafts = drafts.filter(
+        (draft) => draft.kind === "character" && draft.confidence > 0.6,
+      )
+      if (likelyCharacterDrafts.length > 0) {
+        startBackgroundCharacterSheets(story, drafts)
+      }
     } catch (err) {
       console.error("Story opening error:", err)
       setError(err instanceof Error ? err.message : "Failed to generate story")
@@ -637,7 +818,32 @@ export function StoryOpeningPanel({
         </div>
       )}
 
-      {pendingStory && characterDrafts.length > 0 && (
+      {pendingStory && conceptPitches.length > 0 && (
+        <ConceptPitchModal
+          pitches={conceptPitches}
+          drafts={characterDrafts}
+          progress={sheetProgress}
+          sheetState={sheetState}
+          sheetError={sheetError}
+          pitchError={pitchError}
+          isBusy={isGenerating}
+          onChoose={chooseConceptPitch}
+          onCancel={() => {
+            setPendingStory(null)
+            setCharacterCandidates([])
+            setCharacterDrafts([])
+            setSheetProgress({})
+            setSheetError(null)
+            setConceptPitches([])
+            setPitchError(null)
+            setBackgroundCharacters([])
+            setSheetState("idle")
+            sheetsPromiseRef.current = null
+          }}
+        />
+      )}
+
+      {pendingStory && conceptPitches.length === 0 && characterDrafts.length > 0 && (
         <CharacterConfirmationModal
           candidates={characterCandidates}
           drafts={characterDrafts}
@@ -1102,6 +1308,199 @@ function InspectorBlock({
 
 function Empty({ children }: { children: ReactNode }) {
   return <div className="text-[12px] italic text-[#555]">{children}</div>
+}
+
+function ConceptPitchModal({
+  pitches,
+  drafts,
+  progress,
+  sheetState,
+  sheetError,
+  pitchError,
+  isBusy,
+  onChoose,
+  onCancel,
+}: {
+  pitches: StoryConceptPitch[]
+  drafts: CharacterConfirmationDraft[]
+  progress: Record<string, CharacterSheetProgress>
+  sheetState: PitchSheetState
+  sheetError: string | null
+  pitchError: string | null
+  isBusy: boolean
+  onChoose: (pitch: StoryConceptPitch) => void
+  onCancel: () => void
+}) {
+  const characterDrafts = drafts.filter((draft) => draft.kind === "character")
+  const sheetLabel =
+    sheetState === "working"
+      ? "Character sheets running while you choose"
+      : sheetState === "done"
+        ? "Character sheets ready"
+        : sheetState === "error"
+          ? "Character sheets fell back to raw refs"
+          : "No character sheet job needed"
+
+  return (
+    <div className="absolute inset-0 z-[120] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[min(820px,94dvh)] w-full max-w-6xl flex-col overflow-hidden rounded-sm border border-[#252525] bg-[#0b0b0b] shadow-2xl">
+        <header className="flex flex-shrink-0 items-center border-b border-[#1a1a1a] bg-[#101010] px-4 py-3">
+          <div>
+            <h2 className="text-[13px] font-semibold uppercase tracking-wide text-[#e0e0e0]">
+              Pick the story concept
+            </h2>
+            <p className="mt-1 text-[11px] text-[#666]">
+              Three premium logline/plot options come before the canvas. Character sheets continue in the background.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isBusy}
+            className="ml-auto flex h-7 w-7 items-center justify-center rounded-sm text-[#555] hover:bg-white/[0.05] hover:text-[#aaa] disabled:cursor-not-allowed disabled:opacity-40"
+            title="Cancel pitch selection"
+          >
+            ✕
+          </button>
+        </header>
+
+        {(pitchError || sheetError) && (
+          <div className="flex-shrink-0 border-b border-amber-500/40 bg-amber-950/30 px-4 py-2 text-[12px] text-amber-200">
+            {pitchError || sheetError}
+          </div>
+        )}
+
+        <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[1fr_320px]">
+          <div className="min-h-0 overflow-y-auto p-4">
+            <div className="grid gap-3 xl:grid-cols-3">
+              {pitches.map((pitch, index) => (
+                <article
+                  key={pitch.id}
+                  className="flex min-h-[360px] flex-col rounded-sm border border-[#1f1f1f] bg-[#101010]"
+                >
+                  <div className="border-b border-[#1a1a1a] p-3">
+                    <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-wider text-cyan-400">
+                      <span>Concept {index + 1}</span>
+                      <span>Current / cinematic</span>
+                    </div>
+                    <h3 className="text-[16px] font-semibold leading-tight text-[#e8e8e8]">
+                      {pitch.title}
+                    </h3>
+                  </div>
+                  <div className="flex flex-1 flex-col gap-3 p-3 text-[12px] leading-relaxed">
+                    <PitchField label="Logline">{pitch.logline}</PitchField>
+                    <PitchField label="Plot">{pitch.plot}</PitchField>
+                    <PitchField label="Tone">{pitch.tone}</PitchField>
+                    <PitchField label="Twist">{pitch.twist}</PitchField>
+                  </div>
+                  <div className="border-t border-[#1a1a1a] p-3">
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => onChoose(pitch)}
+                      className="h-9 w-full rounded-sm border border-cyan-700 bg-cyan-600 text-[12px] font-medium text-[#0a0a0a] hover:bg-cyan-500 disabled:cursor-wait disabled:border-[#252525] disabled:bg-[#141414] disabled:text-[#555]"
+                    >
+                      {isBusy ? "Building canvas…" : "Choose this plot →"}
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <aside className="min-h-0 overflow-y-auto border-t border-[#1a1a1a] bg-[#0f0f0f] p-4 lg:border-l lg:border-t-0">
+            <div className="mb-3 rounded-sm border border-[#252525] bg-[#111] p-3">
+              <div className="flex items-center gap-2 text-[12px] text-[#ddd]">
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    sheetState === "working"
+                      ? "animate-pulse bg-cyan-400"
+                      : sheetState === "done"
+                        ? "bg-emerald-400"
+                        : sheetState === "error"
+                          ? "bg-amber-400"
+                          : "bg-[#555]"
+                  }`}
+                />
+                <span>{sheetLabel}</span>
+              </div>
+              <p className="mt-2 text-[11px] leading-snug text-[#666]">
+                This keeps the decision step useful: you pick the strongest plot while the app prepares production-grade character references for continuity.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {characterDrafts.length > 0 ? (
+                characterDrafts.map((draft, index) => {
+                  const itemProgress = progress[draft.id]
+                  return (
+                    <article
+                      key={draft.id}
+                      className="overflow-hidden rounded-sm border border-[#1a1a1a] bg-[#101010]"
+                    >
+                      <div className="relative aspect-video bg-black">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- User-provided blob/data references are preview-only and not stable Next image assets. */}
+                        <img
+                          src={draft.imageUrl}
+                          alt={draft.name || `Character ${index + 1}`}
+                          className="h-full w-full object-cover"
+                        />
+                        <div className="absolute left-2 top-2 rounded-sm bg-black/75 px-2 py-1 text-[10px] uppercase tracking-wide text-[#ccc]">
+                          {Math.round(draft.confidence * 100)}%
+                        </div>
+                      </div>
+                      <div className="p-3">
+                        <div className="text-[12px] font-medium text-[#e0e0e0]">
+                          {draft.name}
+                        </div>
+                        <div className="mt-1 line-clamp-3 text-[11px] leading-snug text-[#666]">
+                          {draft.descriptor}
+                        </div>
+                        {itemProgress && itemProgress.phase !== "idle" && (
+                          <div
+                            className={`mt-2 rounded-sm border px-2 py-1.5 text-[11px] ${
+                              itemProgress.phase === "error"
+                                ? "border-red-900/70 bg-red-950/25 text-red-300"
+                                : itemProgress.phase === "done"
+                                  ? "border-emerald-900/70 bg-emerald-950/25 text-emerald-300"
+                                  : "border-cyan-900/70 bg-cyan-950/25 text-cyan-300"
+                            }`}
+                          >
+                            {itemProgress.message ?? itemProgress.phase}
+                          </div>
+                        )}
+                      </div>
+                    </article>
+                  )
+                })
+              ) : (
+                <div className="rounded-sm border border-[#1a1a1a] bg-[#101010] p-3 text-[12px] italic text-[#555]">
+                  No character references detected; the selected plot will use the uploaded images as raw visual anchors.
+                </div>
+              )}
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PitchField({
+  label,
+  children,
+}: {
+  label: string
+  children: ReactNode
+}) {
+  return (
+    <div>
+      <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-[#666]">
+        {label}
+      </div>
+      <div className="text-[#cfcfcf]">{children}</div>
+    </div>
+  )
 }
 
 function CheckRow({ ok, label }: { ok: boolean; label: string }) {

@@ -1,6 +1,7 @@
 import { createPartFromText, createUserContent } from '@google/genai'
 import { createGeminiClient } from './gemini-client'
-import { GEMINI_MODEL_PRO } from './gemini-models'
+import { getBranchNarrativeModel } from './gemini-models'
+import { CURRENT_ZEITGEIST_DIRECTIVE, CURRENT_VISUAL_DIRECTIVE } from './zeitgeist'
 
 export type GeminiBranchPlanRow = {
   label: string
@@ -33,6 +34,9 @@ Desired outcome: ${input.outcome}
 Story context so far:
 ${input.currentContext || '(none)'}
 
+${CURRENT_ZEITGEIST_DIRECTIVE}
+${CURRENT_VISUAL_DIRECTIVE}
+
 Generate exactly 3 distinct branching paths (A, B, C). Each path must feel like a meaningful player choice.
 
 Return JSON only with this shape:
@@ -60,7 +64,7 @@ Rules:
 
   const ai = createGeminiClient()
   const res = await ai.models.generateContent({
-    model: GEMINI_MODEL_PRO,
+    model: getBranchNarrativeModel(),
     contents: createUserContent(createPartFromText(prompt)),
     config: {
       temperature: 0.85,

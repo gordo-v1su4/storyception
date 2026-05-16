@@ -4,6 +4,7 @@ import { createGeminiClient } from '@/lib/gemini-client'
 import { GEMINI_MODEL_FLASH } from '@/lib/gemini-models'
 import type { CharacterKind } from '@/lib/storyception-schema'
 import { normalizeCharacterKind, requireNonEmptyString, resolveInlineImage } from '../_utils'
+import { CURRENT_VISUAL_DIRECTIVE } from '@/lib/zeitgeist'
 
 type DetectionCandidate = {
   imageUrl: string
@@ -39,6 +40,12 @@ function clamp01(value: unknown): number {
   return Math.max(0, Math.min(1, n))
 }
 
+function inferLikelyCharacterFromDescriptor(descriptor: string): boolean {
+  return /\b(actor|person|portrait|face|man|woman|heir|protagonist|antihero|character|wardrobe|skin|eyes|hair)\b/i.test(
+    descriptor
+  )
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -63,9 +70,11 @@ For each image return one candidate with:
 - imageIndex: the zero-based image index
 - kind: the best classification
 - suggestedName: short editable display name; use "Unknown subject" if unclear
-- descriptor: one concise visual/personality/provenance description useful for story planning and character-sheet generation
+- descriptor: one concise but production-useful visual/personality/provenance description for story planning and premium character-sheet generation; include real wardrobe/material/lighting/identity cues when visible
 - confidence: 0 to 1 confidence that the kind is correct.
-Do not omit uncertain images; use kind unknown and low confidence instead.`
+Do not omit uncertain images; use kind unknown and low confidence instead.
+
+${CURRENT_VISUAL_DIRECTIVE}`
 
     const ai = createGeminiClient()
     const res = await ai.models.generateContent({
@@ -91,12 +100,17 @@ Do not omit uncertain images; use kind unknown and low confidence instead.`
 
     const candidates: DetectionCandidate[] = imageUrls.map((imageUrl, fallbackIndex) => {
       const raw = parsed.candidates?.find((c) => c.imageIndex === fallbackIndex) ?? parsed.candidates?.[fallbackIndex]
-      const kind = normalizeCharacterKind(raw?.kind)
+      const descriptor = raw?.descriptor?.trim() || 'Uploaded reference image; details unclear.'
+      const normalizedKind = normalizeCharacterKind(raw?.kind)
+      const kind =
+        normalizedKind === 'unknown' && inferLikelyCharacterFromDescriptor(descriptor)
+          ? 'character'
+          : normalizedKind
       return {
         imageUrl,
         kind,
         suggestedName: raw?.suggestedName?.trim() || (kind === 'character' ? `Character ${fallbackIndex + 1}` : 'Unknown subject'),
-        descriptor: raw?.descriptor?.trim() || 'Uploaded reference image; details unclear.',
+        descriptor,
         confidence: clamp01(raw?.confidence),
       }
     })

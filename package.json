@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "node node_modules/next/dist/bin/next build",
+    "character:prompt-standard": "bun run scripts/character-prompt-standard.ts",
     "dev": "bun run scripts/dev.ts",
     "lint": "eslint .",
     "smoke": "bun run scripts/smoke-test-apis.ts",

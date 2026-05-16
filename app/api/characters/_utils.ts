@@ -114,6 +114,26 @@ export async function generateCharacterImageBase64(params: {
   throw new Error('No image data in Gemini character image response')
 }
 
+async function storeGeneratedCharacterImage(args: {
+  imageBase64: string
+  fileName: string
+  sessionId: string
+  characterId: string
+}): Promise<string> {
+  if (!process.env.MEDIA_API_TOKEN && process.env.NODE_ENV === 'development') {
+    return `data:image/png;base64,${args.imageBase64}`
+  }
+
+  const uploaded = await uploadBufferViaMediaApi({
+    buffer: Buffer.from(args.imageBase64, 'base64'),
+    fileName: args.fileName,
+    contentType: 'image/png',
+    folder: `sessions/${args.sessionId}/characters/${args.characterId}`,
+    bucket: process.env.STORYCEPTION_MEDIA_BUCKET || 'storyception',
+  })
+  return uploaded.publicUrl
+}
+
 export async function upsertDraftCharacter(args: {
   sessionId: string
   characterId?: string
@@ -175,18 +195,17 @@ export async function generateAndStoreCharacterSheet(args: {
     prompt,
     abortSignal: AbortSignal.timeout(Number.parseInt(process.env.GEMINI_IMAGE_TIMEOUT_MS ?? '', 10) || 180_000),
   })
-  const uploaded = await uploadBufferViaMediaApi({
-    buffer: Buffer.from(imageBase64, 'base64'),
+  const sheetImageUrl = await storeGeneratedCharacterImage({
+    imageBase64,
     fileName: 'sheet.png',
-    contentType: 'image/png',
-    folder: `sessions/${args.sessionId}/characters/${draft.character_id}`,
-    bucket: process.env.STORYCEPTION_MEDIA_BUCKET || 'storyception',
+    sessionId: args.sessionId,
+    characterId: draft.character_id,
   })
   const character = await updateCharacter(draft.character_id, {
-    sheetImageUrl: uploaded.publicUrl,
+    sheetImageUrl,
     megaPrompt: prompt,
   })
-  return { character, sheetImageUrl: uploaded.publicUrl }
+  return { character, sheetImageUrl }
 }
 
 export async function generateAndStoreCharacterLookSheet(args: {
@@ -214,17 +233,16 @@ export async function generateAndStoreCharacterLookSheet(args: {
     prompt,
     abortSignal: AbortSignal.timeout(Number.parseInt(process.env.GEMINI_IMAGE_TIMEOUT_MS ?? '', 10) || 180_000),
   })
-  const uploaded = await uploadBufferViaMediaApi({
-    buffer: Buffer.from(imageBase64, 'base64'),
+  const lookSheetImageUrl = await storeGeneratedCharacterImage({
+    imageBase64,
     fileName: `looksheet_${lookLabel.replace(/[^a-z0-9_-]+/gi, '_')}.png`,
-    contentType: 'image/png',
-    folder: `sessions/${args.sessionId}/characters/${draft.character_id}`,
-    bucket: process.env.STORYCEPTION_MEDIA_BUCKET || 'storyception',
+    sessionId: args.sessionId,
+    characterId: draft.character_id,
   })
   const character = await updateCharacter(draft.character_id, {
-    lookSheetImageUrl: uploaded.publicUrl,
+    lookSheetImageUrl,
     lookLabel,
     megaPrompt: prompt,
   })
-  return { character, lookSheetImageUrl: uploaded.publicUrl, lookLabel }
+  return { character, lookSheetImageUrl, lookLabel }
 }

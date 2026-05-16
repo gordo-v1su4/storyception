@@ -13,6 +13,8 @@ export interface StoryBeat {
   
   // New fields for enhanced functionality
   frames?: string[]              // 9 image URLs for grid display
+  optionFrames?: string[]        // 4 image URLs from a single 2x2 4K option grid
+  selectedOptionIndex?: number   // Which option frame should guide the 3x3 expansion
   branchWeight?: number          // 0.0-1.0 branching likelihood
   isLoopable?: boolean           // Can explore multiple times (Fun & Games, etc.)
   visitedScenes?: string[]       // For loopable beats - track explored scenes
@@ -26,6 +28,15 @@ export interface StoryBeat {
   keyframePrompts?: string[]     // 9 prompts for keyframe generation
   gridImageUrl?: string | null   // URL of generated 3x3 grid image
   keyframeUrls?: string[]        // Individual keyframe URLs after splitting
+}
+
+export interface StoryConceptPitch {
+  id: string
+  title: string
+  logline: string
+  plot: string
+  tone: string
+  twist: string
 }
 
 export interface TimelineClip {

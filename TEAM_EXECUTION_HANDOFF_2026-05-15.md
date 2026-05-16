@@ -1,5 +1,35 @@
 # Team Execution Handoff — Storyception Character System (2026-05-15)
 
+
+## 2026-05-16 execution update
+
+The fresh team/RALPLAN work has now been implemented directly in the main workspace. Do **not** relaunch the old team command as-is unless intentionally starting a new follow-up pass.
+
+Current continuation source: `STORYCEPTION_HANDOFF_CURRENT.md`.
+
+Completed since this team handoff was written:
+
+- [x] Google ADC/Vertex project `project-79-461317` authenticated and verified.
+- [x] Character detect/sheet/looksheet route set is present and smoke route checks see the files.
+- [x] Active `StoryOpeningPanel` now performs upload → character detect → 3 pitch generation → background character sheets → selected pitch story generation.
+- [x] `app/api/story/pitches/route.ts` added for 3 logline/plot options before canvas.
+- [x] Story generation accepts selected concept pitch and character context.
+- [x] Character prompts upgraded to 4K premium cinematic production-board standard.
+- [x] `lib/zeitgeist.ts` added with current creative/visual standards and grid contract.
+- [x] `/api/images/generate` is the 3x3 one-4K-grid-then-slice-to-9 path.
+- [x] `/api/images/options` added as the 2x2 one-4K-grid-then-slice-to-4 path.
+- [x] `FlowCanvas` includes compact persistent character reference strip and 2x2 option generation/selection plumbing.
+- [x] `StoryBeatNode` renders selectable 2x2 option frames before full 3x3 keyframes.
+- [x] Verification passed: typecheck, lint with warnings only, character prompt standard, light API smoke, pitch API, 2x2 option API, browser flow to canvas.
+
+Remaining blockers:
+
+- [x] Final `bun run build` rerun passed after removing Google-hosted `next/font/google` and using offline-safe system font variables.
+- [ ] Full 3x3 image generation and character-sheet live generation may hit Vertex `429 RESOURCE_EXHAUSTED`; retry after quota recovers or check quota/concurrency.
+- [ ] Commit latest implementation/docs with Lore protocol after final gates.
+
+---
+
 ## Status
 
 Ready for a fresh-context `$team` launch, but **do not launch until the new window starts**.

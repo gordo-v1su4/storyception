@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
       referenceAssets,
       characters,
       sessionId: requestedSessionId,
+      conceptPitch,
     } = body
 
     // 1. Run the StoryWorkflow
@@ -34,6 +35,7 @@ export async function POST(request: NextRequest) {
       referenceImages,
       characters: Array.isArray(characters) ? characters : [],
       beatLabels: beatsDefForPrompt.map((b: { label: string }) => b.label),
+      conceptPitch,
     })
 
     const storyData = workflowResult.PlanStory
@@ -96,7 +98,10 @@ export async function POST(request: NextRequest) {
       await updateSession(sessionId, {
         storyData: JSON.stringify({
           storySeed: storyData.story_seed,
-          outcomeName
+          storyTitle: storyData.story_title,
+          storyLogline: storyData.story_logline,
+          outcomeName,
+          conceptPitch,
         })
       })
 
@@ -139,6 +144,7 @@ export async function POST(request: NextRequest) {
       title: storyData.story_title,
       logline: storyData.story_logline,
       storySeed: storyData.story_seed,
+      conceptPitch,
       beats: allBeats,
       characters: Array.isArray(characters) ? characters : [],
       persistenceBackend: getPersistenceMode(),

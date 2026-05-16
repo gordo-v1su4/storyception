@@ -16,6 +16,28 @@ function firstNonEmpty(keys: (string | undefined)[]): string | undefined {
   return undefined
 }
 
+function envFlagTrue(name: string): boolean {
+  const v = process.env[name]?.trim().toLowerCase()
+  return v === 'true' || v === '1' || v === 'yes'
+}
+
+function getProjectId(): string | undefined {
+  return (
+    process.env.GOOGLE_CLOUD_PROJECT?.trim() ||
+    process.env.GOOGLE_CLOUD_PROJECT_ID?.trim() ||
+    undefined
+  )
+}
+
+/** True when Gemini is configured for project-scoped Vertex via ADC/OAuth. */
+export function hasVertexProjectAdcAuth(): boolean {
+  return (
+    envFlagTrue('GOOGLE_GENAI_USE_VERTEXAI') &&
+    envFlagTrue('GOOGLE_GENAI_VERTEX_USE_GCP_PROJECT') &&
+    Boolean(getProjectId())
+  )
+}
+
 /** True if any known key env var is non-empty (for “configured?” checks). */
 export function getAnyGeminiApiKey(): string | undefined {
   return firstNonEmpty([
@@ -52,7 +74,11 @@ export function getGeminiApiKeyForVertexExpress(): string | undefined {
   ])
 }
 
-/** @deprecated Prefer {@link getAnyGeminiApiKey} — kept as an alias for “any key set”. */
+/**
+ * @deprecated Prefer route-specific checks or {@link hasVertexProjectAdcAuth}.
+ * Kept as an alias for “Gemini auth configured” because some API routes only
+ * need a fast preflight before constructing the shared Gemini client.
+ */
 export function getGeminiApiKey(): string | undefined {
-  return getAnyGeminiApiKey()
+  return getAnyGeminiApiKey() ?? (hasVertexProjectAdcAuth() ? 'adc' : undefined)
 }

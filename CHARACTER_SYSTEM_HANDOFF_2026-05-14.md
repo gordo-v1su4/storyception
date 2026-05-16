@@ -1,5 +1,10 @@
 # Storyception — Character System Handoff (2026-05-14)
 
+
+> **2026-05-16 CURRENT STATUS:** The original handoff below is now historical foundation. The latest implementation/status entrypoint is `STORYCEPTION_HANDOFF_CURRENT.md`. It points to the RALPLAN, team handoff, Google auth notes, completed checklist, verification evidence, and remaining blockers. In short: character APIs/UI/story integration/pitch gate/2x2+3x3 4K grid contracts are implemented; final build now passes with offline-safe font fallbacks, and live image generation can still hit Vertex 429 quota.
+
+---
+
 > **Read this first when resuming.** It captures exactly where the character-sheet
 > system was left off, the architectural decisions made, and the explicit next
 > steps. Pairs with `GOOGLE_AUTH_AND_PIPELINE_NOTES_2026-05-14.md` (auth + pipeline

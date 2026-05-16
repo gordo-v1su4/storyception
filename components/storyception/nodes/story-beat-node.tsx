@@ -1,4 +1,5 @@
 "use client"
+/* eslint-disable @next/next/no-img-element */
 
 import { memo, useState } from "react"
 import { Handle, Position } from "@xyflow/react"
@@ -17,19 +18,23 @@ interface StoryBeatNodeData {
   onSelect: () => void
   onToggleBranch: () => void
   onUpdateBeat: (updates: Partial<StoryBeat>) => void
+  onGenerateOptions?: () => Promise<void>
 }
 
 export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
-  const { beat, isSelected, isExpanded, layout = "horizontal", onSelect, onToggleBranch } = data
+  const { beat, isSelected, isExpanded, layout = "horizontal", onSelect, onToggleBranch, onUpdateBeat, onGenerateOptions } = data
   const beatIndex = beat.id - 1
   const totalBeats = 15
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+  const [isGeneratingOptions, setIsGeneratingOptions] = useState(false)
   
   // Get frames from beat or use placeholders
   const frames = beat.frames || []
+  const optionFrames = beat.optionFrames || []
   const hasFrames = frames.length > 0
+  const hasOptions = optionFrames.length > 0
   const isGenerating = beat.status === 'generating'
-  const isSkeleton = beat.status === 'skeleton' || (!beat.desc && !beat.generatedIdea && !hasFrames && !isGenerating)
+  const isSkeleton = beat.status === 'skeleton' || (!beat.desc && !beat.generatedIdea && !hasFrames && !hasOptions && !isGenerating)
 
   // Get handle positions based on layout
 
@@ -113,6 +118,35 @@ export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
                 </p>
               </div>
             </div>
+          ) : hasOptions && !hasFrames ? (
+            <div className={`grid grid-cols-2 gap-[1px] bg-zinc-800 ${isGenerating ? 'opacity-30' : ''}`}>
+              {optionFrames.slice(0, 4).map((frame: string, idx: number) => {
+                const selected = (beat.selectedOptionIndex ?? 0) === idx
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    className={`aspect-video bg-zinc-900 relative cursor-pointer transition-all ${
+                      selected ? 'ring-2 ring-cyan-400 z-[1]' : 'hover:brightness-125'
+                    }`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onUpdateBeat({ selectedOptionIndex: idx })
+                    }}
+                  >
+                    <img src={frame} alt={`Option ${idx + 1}`} className="w-full h-full object-cover" />
+                    <span className="absolute bottom-0 left-0 text-[7px] font-mono text-white/70 bg-black/70 px-1">
+                      OPT {idx + 1}
+                    </span>
+                    {selected && (
+                      <span className="absolute top-1 right-1 text-[7px] font-bold text-black bg-cyan-300 px-1">
+                        SELECTED
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
           ) : (
             <div className={`grid grid-cols-3 gap-[1px] bg-zinc-800 ${isGenerating ? 'opacity-30' : ''}`}>
               {hasFrames ? (
@@ -154,7 +188,7 @@ export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
           </p>
 
           {!isSkeleton && (
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               {selectedBranch ? (
                 <div className="flex items-center gap-1.5 text-pink-400 flex-1 min-w-0">
                   <GitBranch size={14} />
@@ -162,6 +196,29 @@ export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
                 </div>
               ) : (
                 <div className="text-[10px] text-zinc-600">Choose your path...</div>
+              )}
+
+              {/* 2x2 option-grid button */}
+              {!hasFrames && (
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  disabled={!onGenerateOptions || isGeneratingOptions || isGenerating}
+                  onClick={async (e) => {
+                    e.stopPropagation()
+                    if (!onGenerateOptions || isGeneratingOptions) return
+                    setIsGeneratingOptions(true)
+                    try {
+                      await onGenerateOptions()
+                    } finally {
+                      setIsGeneratingOptions(false)
+                    }
+                  }}
+                  className="text-[10px] px-2.5 py-2 font-bold uppercase flex items-center gap-1.5 transition-all shrink-0 bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25 disabled:opacity-40"
+                  title="Generate 4 selectable options from one 4K 2x2 image grid"
+                >
+                  {isGeneratingOptions ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                  2x2
+                </motion.button>
               )}
 
               {/* Branch button */}

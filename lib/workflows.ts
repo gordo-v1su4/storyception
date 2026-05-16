@@ -17,6 +17,8 @@ import { Type } from '@google/genai'
 import { createGeminiClient } from './gemini-client'
 import { getBranchNarrativeModel, getInitialStoryNarrativeModel } from './gemini-models'
 import type { CharacterRecord } from './storyception-schema'
+import type { StoryConceptPitch } from './types'
+import { CURRENT_ZEITGEIST_DIRECTIVE, CURRENT_VISUAL_DIRECTIVE } from './zeitgeist'
 
 const STORY_TIMEOUT_MS =
   Number.parseInt(process.env.GEMINI_TIMEOUT_MS ?? '', 10) || 90_000
@@ -111,6 +113,7 @@ export interface StoryWorkflowInput {
   referenceImages?: string[]
   beatLabels?: string[]
   characters?: CharacterRecord[]
+  conceptPitch?: StoryConceptPitch
 }
 
 export interface StoryWorkflowResult {
@@ -153,11 +156,17 @@ export const StoryWorkflow = {
       : ''
 
     const characterContext = buildCharacterContextBlock(input.characters)
+    const pitchContext = input.conceptPitch
+      ? `\nSelected concept pitch:\nTitle: ${input.conceptPitch.title}\nLogline: ${input.conceptPitch.logline}\nPlot: ${input.conceptPitch.plot}\nTone: ${input.conceptPitch.tone}\nRequired twist/reversal: ${input.conceptPitch.twist}\nUse this pitch as the story contract.`
+      : ''
 
     const prompt = `Plan the opening of an interactive cinematic short.
 
-Archetype: ${input.archetypeName}
+Archetype: ${input.archetypeName}${pitchContext}
 Target outcome: ${input.outcomeName}${beatLabelsLine}${referenceLine}${characterContext}
+
+${CURRENT_ZEITGEIST_DIRECTIVE}
+${CURRENT_VISUAL_DIRECTIVE}
 
 Write:
 1. A short, evocative story_title.
@@ -263,6 +272,8 @@ ${characterContext}
 
 Earlier beats so far:
 ${previous}
+
+${CURRENT_ZEITGEIST_DIRECTIVE}
 
 Each branch is a meaningful narrative choice the player can take. Branches must feel distinct (different attitude, action, or risk profile) and align with the natural flow of this story. Return ONLY JSON matching the response schema.`
 

@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import sharp from 'sharp'
-import {
-  updateKeyframe,
-  updateBeat
-} from '@/lib/nocodb'
 import { getGeminiApiKey } from '@/lib/gemini-api-key'
 import {
   generateStoryboardGridBase64,
@@ -12,7 +8,6 @@ import {
 import { uploadBufferViaMediaApi } from '@/lib/object-storage'
 import { CURRENT_VISUAL_DIRECTIVE, FOUR_K_GRID_DIRECTIVE } from '@/lib/zeitgeist'
 
-/** Avoid regex on multi‑MB data URLs — `.+` / dotAll can blow the regexp stack. */
 const DATA_URL_MAX_BYTES = 35 * 1024 * 1024
 
 function parseDataUrlBase64(s: string): StoryboardReferenceImagePart | null {
@@ -32,27 +27,27 @@ function isHttpUrl(s: string): boolean {
   return /^https?:\/\//i.test(s)
 }
 
-function normalizeKeyframePrompts(
+function mimeMatch(m: string): boolean {
+  return /^image\/(png|jpeg|jpg|webp|gif)$/i.test(m)
+}
+
+function normalizeOptionPrompts(
   raw: unknown,
   ctx: { beatLabel?: string; beatDescription?: string }
 ): string[] {
   const strings = Array.isArray(raw)
     ? raw.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
     : []
-  if (strings.length >= 9) return strings.slice(0, 9)
-  if (strings.length > 0) {
-    const out = [...strings]
-    while (out.length < 9) {
-      out.push(strings[out.length % strings.length]!)
-    }
-    return out.slice(0, 9)
-  }
+  if (strings.length >= 4) return strings.slice(0, 4)
+
   const base = (ctx.beatDescription || ctx.beatLabel || 'Cinematic beat').trim()
-  return Array.from(
-    { length: 9 },
-    (_, i) =>
-      `${base} — storyboard panel ${i + 1} of 9, distinct framing and emotion.`
-  )
+  const defaults = [
+    `${base} — option 1, intimate close-up, emotional fracture, premium live-action still.`,
+    `${base} — option 2, wide environmental reveal, scale and production design lead.`,
+    `${base} — option 3, kinetic commercial/music-video angle, bold lighting and movement.`,
+    `${base} — option 4, suspenseful twist image, visual contradiction and edge-of-seat tension.`,
+  ]
+  return [...strings, ...defaults].slice(0, 4)
 }
 
 async function resolveReferenceImageParts(body: {
@@ -110,8 +105,45 @@ async function resolveReferenceImageParts(body: {
   return parts
 }
 
-function mimeMatch(m: string): boolean {
-  return /^image\/(png|jpeg|jpg|webp|gif)$/i.test(m)
+async function splitAndStoreOptions(params: {
+  gridBuffer: Buffer
+  sessionId: string
+  beatId: string
+}): Promise<string[]> {
+  const metadata = await sharp(params.gridBuffer).metadata()
+  const cellWidth = Math.floor((metadata.width || 3840) / 2)
+  const cellHeight = Math.floor((metadata.height || 2160) / 2)
+  const optionFrameUrls: string[] = []
+
+  for (let i = 0; i < 4; i++) {
+    const row = Math.floor(i / 2)
+    const col = i % 2
+    const cellBuffer = await sharp(params.gridBuffer)
+      .extract({
+        left: col * cellWidth,
+        top: row * cellHeight,
+        width: cellWidth,
+        height: cellHeight,
+      })
+      .png()
+      .toBuffer()
+
+    if (!process.env.MEDIA_API_TOKEN && process.env.NODE_ENV === 'development') {
+      optionFrameUrls.push(`data:image/png;base64,${cellBuffer.toString('base64')}`)
+      continue
+    }
+
+    const uploaded = await uploadBufferViaMediaApi({
+      buffer: cellBuffer,
+      fileName: `option-${i + 1}.png`,
+      contentType: 'image/png',
+      folder: `sessions/${params.sessionId}/${params.beatId}/options`,
+      bucket: process.env.STORYCEPTION_MEDIA_BUCKET || 'storyception',
+    })
+    optionFrameUrls.push(uploaded.publicUrl)
+  }
+
+  return optionFrameUrls
 }
 
 export async function POST(request: NextRequest) {
@@ -120,8 +152,7 @@ export async function POST(request: NextRequest) {
     const {
       beatId,
       sessionId,
-      keyframePrompts,
-      keyframe_prompts,
+      optionPrompts,
       referenceImageBase64,
       referenceImageUrl,
       referenceImages,
@@ -141,7 +172,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const prompts = normalizeKeyframePrompts(keyframePrompts ?? keyframe_prompts, {
+    const prompts = normalizeOptionPrompts(optionPrompts, {
       beatLabel: typeof beatLabel === 'string' ? beatLabel : undefined,
       beatDescription: typeof beatDescription === 'string' ? beatDescription : undefined,
     })
@@ -155,103 +186,43 @@ export async function POST(request: NextRequest) {
       typeof branchContext === 'string' && branchContext.trim()
         ? ` Narrative context: ${branchContext.trim()}`
         : ''
-
     const referenceNote =
       referenceParts.length > 1
-        ? ' Use the ordered references as locked visual continuity anchors: original uploaded references first, then clean look sheets, then annotated character sheets.'
+        ? ' Use the ordered references as locked continuity anchors: original uploaded references first, then clean look sheets, then annotated character sheets.'
         : ' Use the provided reference image as the tone, composition, and identity anchor.'
-    const imagePrompt = `Transform the provided reference imagery into ONE native 4K cinematic storyboard board: exactly 9 keyframes arranged in a clean 3x3 grid. The app will split this single 4K grid into 9 separate frames after generation; do not create standalone panels.${referenceNote}${branchNote}
+
+    const imagePrompt = `Create ONE native 4K cinematic visual-direction board: exactly 4 distinct keyframe options arranged in a clean 2x2 grid.${referenceNote}${branchNote}
+
+Each quadrant must be a different high-end solution for the same story beat, not a sequential storyboard. Keep character identity, wardrobe, palette, and world logic consistent while varying lensing, blocking, emotional temperature, camera distance, and twist emphasis. The app will split this single 4K grid into 4 selectable option frames after generation.
 
 ${CURRENT_VISUAL_DIRECTIVE}
 ${FOUR_K_GRID_DIRECTIVE}
 
-Keyframes: ${prompts.join(' | ')}`
+Options: ${prompts.join(' | ')}`
 
     const generatedImageBase64 = await generateStoryboardGridBase64({
       referenceImages: referenceParts,
       prompt: imagePrompt,
     })
 
-    const gridBuffer = Buffer.from(generatedImageBase64, 'base64')
-
-    // 2. Slice Grid into 9 Keyframes
-    const metadata = await sharp(gridBuffer).metadata()
-    const cellWidth = Math.floor((metadata.width || 2048) / 3)
-    const cellHeight = Math.floor((metadata.height || 1152) / 3)
-
-    const keyframeUrls = []
-    for (let i = 0; i < 9; i++) {
-      const row = Math.floor(i / 3)
-      const col = i % 3
-      const cellBuffer = await sharp(gridBuffer)
-        .extract({
-          left: col * cellWidth,
-          top: row * cellHeight,
-          width: cellWidth,
-          height: cellHeight,
-        })
-        .png()
-        .toBuffer()
-
-      let imageUrl: string
-      let storageBucket: string | undefined
-      let objectKey: string | undefined
-      let storageProvider = 'rustfs'
-
-      if (!process.env.MEDIA_API_TOKEN && process.env.NODE_ENV === 'development') {
-        imageUrl = `data:image/png;base64,${cellBuffer.toString('base64')}`
-        storageProvider = 'inline-dev'
-      } else {
-        const uploaded = await uploadBufferViaMediaApi({
-          buffer: cellBuffer,
-          fileName: `kf-${i + 1}.png`,
-          contentType: 'image/png',
-          folder: `sessions/${sessionId}/${beatId}`,
-          bucket: process.env.STORYCEPTION_MEDIA_BUCKET || 'storyception',
-        })
-        imageUrl = uploaded.publicUrl
-        storageBucket = uploaded.bucket
-        objectKey = uploaded.objectKey
-      }
-
-      keyframeUrls.push(imageUrl)
-      const keyframeId = `${beatId}-kf-${i + 1}`
-      try {
-        await updateKeyframe(keyframeId, {
-          imageUrl,
-          storageBucket,
-          objectKey,
-          storageProvider,
-          status: 'ready'
-        })
-      } catch (error) {
-        if (process.env.NODE_ENV !== 'development') throw error
-        console.warn('Failed to persist generated keyframe during dev smoke:', error)
-      }
-    }
-
-    try {
-      await updateBeat(beatId, {
-        status: 'ready',
-        keyframesJson: JSON.stringify({ keyframes: keyframeUrls })
-      })
-    } catch (error) {
-      if (process.env.NODE_ENV !== 'development') throw error
-      console.warn('Failed to persist generated keyframe list during dev smoke:', error)
-    }
+    const optionFrameUrls = await splitAndStoreOptions({
+      gridBuffer: Buffer.from(generatedImageBase64, 'base64'),
+      sessionId: typeof sessionId === 'string' && sessionId.trim() ? sessionId : 'local-session',
+      beatId: typeof beatId === 'string' && beatId.trim() ? beatId : 'beat-options',
+    })
 
     return NextResponse.json({
       success: true,
-      keyframeUrls,
-      keyframes: keyframeUrls,
+      gridLayout: '2x2',
+      optionFrameUrls,
+      options: optionFrameUrls,
     })
-
   } catch (error) {
-    console.error('Native Image Generation Error:', error)
-    const message = error instanceof Error ? error.message : 'Failed to generate images'
+    console.error('Native Image Option Generation Error:', error)
+    const message = error instanceof Error ? error.message : 'Failed to generate image options'
     const dev = process.env.NODE_ENV === 'development'
     return NextResponse.json(
-      { success: false, error: dev ? message : 'Failed to generate images' },
+      { success: false, error: dev ? message : 'Failed to generate image options' },
       { status: 500 }
     )
   }

@@ -10,6 +10,7 @@
  * which tells the model to derive it from the attached source image.
  */
 import type { ArchetypeCategoryId } from './types'
+import { CHARACTER_SHEET_STANDARD, CURRENT_VISUAL_DIRECTIVE } from './zeitgeist'
 
 export interface CharacterSheetInput {
   /** Required: display name for the character (e.g. "Kaito Tanaka"). */
@@ -44,11 +45,11 @@ export interface CharacterSheetInput {
 
 const STYLE_BY_CATEGORY: Record<ArchetypeCategoryId, string> = {
   'music-video':
-    'Hyper-expressive cinematic realism with stylized lighting and a color palette aligned to the track mood. Performance-forward, art-directed, slightly painterly.',
+    'Hyper-expressive cinematic realism with stylized lighting and a color palette aligned to the track mood. Performance-forward, art-directed, premium music-video photography.',
   'film-tv':
-    'Semi-realistic cinematic character design. High emotional readability with restrained stylization. Production-board fidelity.',
+    'High-end cinematic realism with restrained premium stylization. High emotional readability, real-actor specificity, production-board fidelity.',
   commercial:
-    'Pixar-style stylized realism. Appealing exaggeration, soft geometry, high emotional readability, vibrant cinematic lighting.',
+    'Premium live-action commercial realism with subtle appealing exaggeration only where brand-story clarity demands it. High emotional readability, tactile wardrobe, vibrant cinematic lighting.',
 }
 
 function val(v: string | undefined, fallback: string): string {
@@ -75,6 +76,9 @@ CORE DIRECTIVE (NON-NEGOTIABLE)
 - No symmetry for the sake of neatness
 - Composition must feel art-directed, intentional, slightly asymmetrical
 - Every section should feel placed, not auto-generated
+- This must match the quality of a premium reference board: hero portrait, exact turnaround, head studies, wardrobe/prop close-ups, and production notes all feeling from the same expensive production.
+
+${CHARACTER_SHEET_STANDARD}
 
 CHARACTER IDENTITY
 - Name: ${val(input.name, INFER)}
@@ -152,7 +156,8 @@ CAMERA + LIGHTING SPECIFICATIONS
 - Portrait: 85mm lens, shallow DOF, focus on eyes and expression
 
 COMPOSITION & LAYOUT (PREMIUM STUDIO BOARD)
-- Clean but art-directed sheet layout, slightly asymmetrical
+- Clean but art-directed sheet layout, slightly asymmetrical, like a streaming-series pitch board rather than a toy/model-sheet template
+- Large hero portrait/title plate that sells the character as a castable lead
 - Neutral gray / soft-tone background for the turnaround
 - Structured but visually dynamic section placement
 - Include:
@@ -166,9 +171,11 @@ ${input.quote ? `  - Director quote callout: "${input.quote}"` : ''}
 STYLE
 ${style}
 
+${CURRENT_VISUAL_DIRECTIVE}
+
 Must include:
-- Appealing exaggeration
-- Soft geometry
+- Real-actor presence
+- Tactile wardrobe and production-design materials
 - Cinematic lighting
 - High emotional readability
 
@@ -180,6 +187,7 @@ OUTPUT QUALITY
 - Sharp focus
 - Production-ready fidelity
 - Suitable for film development, merchandising, and pitch decks
+- Looks expensive, current, cinematic, and physically real
 - Single composite layout image (one canvas, all sections placed within it)
 - Wide cinematic aspect (16:9)`
 }
@@ -217,6 +225,8 @@ export function buildCharacterLookSheetPrompt(input: {
 
 The face in the attached reference image is the canonical face. Preserve identity exactly across every panel — no drift in proportions, no reinterpretation, no stylization that loses the likeness.
 
+${CHARACTER_SHEET_STANDARD}
+
 LAYOUT (single composite 16:9 image, art-directed but cleanly readable):
 - A horizontal TURNAROUND strip (full body) with 3-4 views on a neutral gray seamless backdrop:
     [1] Front view
@@ -240,6 +250,7 @@ MATERIAL & TEXTURE
 
 STYLE
 ${style}. High emotional readability. Composition is intentional and slightly asymmetrical — never an evenly-spaced grid.
+${CURRENT_VISUAL_DIRECTIVE}
 
 ${desc ? `Character context (for tone, posture, demeanor):\n${desc}\n\n` : ''}OUTPUT
 - Single composite PNG, 16:9, 4K, sharp focus, production-ready.
