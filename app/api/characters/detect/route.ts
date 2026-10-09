@@ -1,7 +1,7 @@
-import { createPartFromBase64, createPartFromText, createUserContent, Type } from '@google/genai'
+import { Type } from '@google/genai'
 import { NextRequest, NextResponse } from 'next/server'
-import { createGeminiClient } from '@/lib/gemini-client'
 import { GEMINI_MODEL_FLASH } from '@/lib/gemini-models'
+import { generateStoryJson } from '@/lib/story-text-llm'
 import type { CharacterKind } from '@/lib/storyception-schema'
 import { normalizeCharacterKind, requireNonEmptyString, resolveInlineImage } from '../_utils'
 import { CURRENT_VISUAL_DIRECTIVE } from '@/lib/zeitgeist'
@@ -58,37 +58,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'imageUrls must contain at least one image URL' }, { status: 400 })
     }
 
-    const imageParts = await Promise.all(imageUrls.map((url) => resolveInlineImage(url)))
-    const parts = imageParts.flatMap((image, index) => [
-      createPartFromText(`Reference image ${index}: ${imageUrls[index]}`),
-      createPartFromBase64(image.base64, image.mimeType),
-    ])
+    const images = await Promise.all(imageUrls.map((url) => resolveInlineImage(url)))
 
-    const prompt = `Detect candidate story assets in these uploaded reference images for Storyception session ${sessionId}.
+    const prompt = `Detect candidate story assets in these ${images.length} uploaded reference images for Storyception session ${sessionId}.
+The images are given in order; the first is imageIndex 0.
 Classify each image as one of: character, environment, prop, unknown.
 For each image return one candidate with:
 - imageIndex: the zero-based image index
 - kind: the best classification
 - suggestedName: short editable display name; use "Unknown subject" if unclear
-- descriptor: one concise but production-useful visual/personality/provenance description for story planning and premium character-sheet generation; include real wardrobe/material/lighting/identity cues when visible
+- descriptor: 1–3 production-useful sentences for story planning and premium character-sheet generation: who/what is shown, the setting (location, time of day, weather), any action or event in progress (e.g. someone falling, fleeing, fighting), mood, and real wardrobe/material/lighting/identity cues when visible. If the image is a storyboard, contact sheet, or grid of shots (e.g. 3x3), describe it as a sequence: the action that unfolds across the panels in reading order.
 - confidence: 0 to 1 confidence that the kind is correct.
 Do not omit uncertain images; use kind unknown and low confidence instead.
 
 ${CURRENT_VISUAL_DIRECTIVE}`
 
-    const ai = createGeminiClient()
-    const res = await ai.models.generateContent({
-      model: GEMINI_MODEL_FLASH,
-      contents: createUserContent([...parts, createPartFromText(prompt)]),
-      config: {
-        temperature: 0.2,
-        maxOutputTokens: 4096,
-        responseMimeType: 'application/json',
-        responseSchema: DETECTION_SCHEMA,
-      },
+    const text = await generateStoryJson({
+      prompt,
+      system: 'You are a film development researcher cataloguing reference images. Return valid JSON only.',
+      images,
+      geminiModel: GEMINI_MODEL_FLASH,
+      schema: DETECTION_SCHEMA,
+      temperature: 0.2,
+      maxOutputTokens: 4096,
+      timeoutMs: Number.parseInt(process.env.GEMINI_TIMEOUT_MS ?? '', 10) || 90_000,
     })
 
-    const parsed = JSON.parse((res.text ?? '').trim() || '{"candidates":[]}') as {
+    const parsed = JSON.parse(text || '{"candidates":[]}') as {
       candidates?: Array<{
         imageIndex?: number
         kind?: string

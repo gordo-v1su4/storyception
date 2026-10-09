@@ -73,7 +73,7 @@ export const BranchNode = memo(({ data }: { data: BranchNodeData }) => {
           if (!isLocked) onSelect()
         }}
         className={`
-          w-[320px] h-[400px] overflow-hidden transition-all duration-300 flex flex-col
+          nodrag w-[320px] h-[400px] overflow-hidden transition-all duration-300 flex flex-col
           ${isLocked && !isSelected ? 'cursor-not-allowed' : 'cursor-pointer'}
           bg-zinc-900
         `}

@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
       characters,
       sessionId: requestedSessionId,
       conceptPitch,
+      referenceSubjects,
     } = body
 
     // 1. Run the StoryWorkflow
@@ -34,6 +35,7 @@ export async function POST(request: NextRequest) {
       outcomeName,
       referenceImages,
       characters: Array.isArray(characters) ? characters : [],
+      referenceSubjects: Array.isArray(referenceSubjects) ? referenceSubjects : [],
       beatLabels: beatsDefForPrompt.map((b: { label: string }) => b.label),
       conceptPitch,
     })
@@ -102,6 +104,12 @@ export async function POST(request: NextRequest) {
           storyLogline: storyData.story_logline,
           outcomeName,
           conceptPitch,
+          // Local file mode can hold inline `data:` references; NocoDB text columns cannot.
+          referenceImages: (Array.isArray(referenceImages) ? referenceImages : []).filter(
+            (url: unknown): url is string =>
+              typeof url === 'string' &&
+              (getPersistenceMode() === 'file' || /^https?:\/\//i.test(url))
+          ),
         })
       })
 

@@ -20,6 +20,9 @@ import { archetypes, outcomes } from "@/lib/data"
 import type { StoryBeat, StoryConceptPitch } from "@/lib/types"
 import { getBeatPercentage } from "@/lib/story-generator"
 import type { CharacterKind, CharacterRecord } from "@/lib/storyception-schema"
+import { IMAGE_GENERATION_ENABLED } from "@/lib/feature-flags"
+import { resizeImageToDataUrl } from "@/lib/resize-image"
+import { readApiJson } from "@/lib/api-json"
 import {
   CharacterConfirmationModal,
   type CharacterConfirmationDraft,
@@ -44,6 +47,30 @@ type PendingStoryGeneration = {
 }
 
 type PitchSheetState = "idle" | "working" | "done" | "error"
+
+type GeneratedStoryBeats = {
+  beats: Array<{
+    id: string
+    label: string
+    scene_description: string
+    duration_seconds: number
+    keyframe_prompts: string[]
+    status: string
+    gridImageUrl: string | null
+    keyframeUrls?: string[]
+  }>
+}
+
+type GeneratedStoryResponse = GeneratedStoryBeats & {
+  success?: boolean
+  error?: string
+  storyId?: string
+  title?: string
+  logline?: string
+  storySeed?: string
+  outcomeName?: string
+  characters?: CharacterRecord[]
+}
 
 const createDraftSessionId = () =>
   `session-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
@@ -224,18 +251,7 @@ export function StoryOpeningPanel({
     })
   }
 
-  const mapGeneratedBeats = (data: {
-    beats: Array<{
-      id: string
-      label: string
-      scene_description: string
-      duration_seconds: number
-      keyframe_prompts: string[]
-      status: string
-      gridImageUrl: string | null
-      keyframeUrls?: string[]
-    }>
-  }): StoryBeat[] => {
+  const mapGeneratedBeats = (data: GeneratedStoryBeats): StoryBeat[] => {
     return data.beats.map((beat, idx) => {
       const percentage = getBeatPercentage(beat.id) || 100 / data.beats.length
       return {
@@ -273,10 +289,18 @@ export function StoryOpeningPanel({
         referenceAssets: story.uploadedAssets,
         characters,
         conceptPitch,
+        referenceSubjects: characterDrafts.map((draft) => ({
+          kind: draft.kind,
+          name: draft.name,
+          descriptor: draft.descriptor,
+        })),
         totalDuration: 90,
       }),
     })
-    const data = await response.json()
+    const data = await readApiJson<GeneratedStoryResponse>(
+      response,
+      "Story generation",
+    )
     if (!response.ok || !data.success) {
       throw new Error(data.error || "Story generation failed")
     }
@@ -373,7 +397,11 @@ export function StoryOpeningPanel({
         characterDrafts: drafts,
       }),
     })
-    const data = await response.json()
+    const data = await readApiJson<{
+      success?: boolean
+      error?: string
+      pitches?: StoryConceptPitch[]
+    }>(response, "Story pitches")
     if (!response.ok || !data.success || !Array.isArray(data.pitches)) {
       throw new Error(data.error || "Story pitch generation failed")
     }
@@ -533,19 +561,32 @@ export function StoryOpeningPanel({
 
     try {
       const draftSessionId = createDraftSessionId()
-      const formData = new FormData()
-      images.forEach((s) => formData.append("images", s.file))
+      let uploadedUrls: string[]
+      let uploadedAssets: UploadedAsset[] = []
+      if (IMAGE_GENERATION_ENABLED) {
+        const formData = new FormData()
+        images.forEach((s) => formData.append("images", s.file))
 
-      const uploadResponse = await fetch("/api/images/upload", {
-        method: "POST",
-        body: formData,
-      })
-      const uploadData = await uploadResponse.json()
-      if (!uploadResponse.ok || !uploadData.success) {
-        throw new Error(uploadData.error || "Image upload failed")
+        const uploadResponse = await fetch("/api/images/upload", {
+          method: "POST",
+          body: formData,
+        })
+        const uploadData = await readApiJson<{
+          success?: boolean
+          error?: string
+          urls?: string[]
+          assets?: UploadedAsset[]
+        }>(uploadResponse, "Image upload")
+        if (!uploadResponse.ok || !uploadData.success) {
+          throw new Error(uploadData.error || "Image upload failed")
+        }
+        uploadedUrls = uploadData.urls || []
+        uploadedAssets = uploadData.assets || []
+      } else {
+        uploadedUrls = await Promise.all(
+          images.map((s) => resizeImageToDataUrl(s.file)),
+        )
       }
-      const uploadedUrls: string[] = uploadData.urls || []
-      const uploadedAssets: UploadedAsset[] = uploadData.assets || []
       if (uploadedUrls.length === 0) {
         throw new Error("Image upload did not return reference URLs")
       }
@@ -581,7 +622,7 @@ export function StoryOpeningPanel({
       const likelyCharacterDrafts = drafts.filter(
         (draft) => draft.kind === "character" && draft.confidence > 0.6,
       )
-      if (likelyCharacterDrafts.length > 0) {
+      if (IMAGE_GENERATION_ENABLED && likelyCharacterDrafts.length > 0) {
         startBackgroundCharacterSheets(story, drafts)
       }
     } catch (err) {
@@ -632,6 +673,7 @@ export function StoryOpeningPanel({
 
   const makeCharacterSheets = async () => {
     if (!pendingStory) return
+    if (!IMAGE_GENERATION_ENABLED) return continueWithRawReferences()
     const characterDraftsOnly = characterDrafts.filter(
       (draft) => draft.kind === "character",
     )

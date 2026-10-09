@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { GitBranch, ChevronDown, ImageIcon, Loader2, X, ChevronLeft, ChevronRight, Sparkles } from "lucide-react"
 import type { StoryBeat } from "@/lib/types"
 import { getBeatColorSet } from "@/lib/colors"
+import { IMAGE_GENERATION_ENABLED } from "@/lib/feature-flags"
 
 type LayoutDirection = "horizontal" | "vertical" | "free"
 
@@ -14,12 +15,15 @@ interface StoryBeatNodeData {
   beat: StoryBeat
   isSelected: boolean
   isExpanded: boolean
+  isLoadingBranches?: boolean
   layout?: LayoutDirection
   onSelect: () => void
   onToggleBranch: () => void
   onUpdateBeat: (updates: Partial<StoryBeat>) => void
   onGenerateOptions?: () => Promise<void>
   onGenerateKeyframes?: () => Promise<void>
+  /** Shown in place of the empty storyboard grid while image generation is off. */
+  referenceImages?: string[]
 }
 
 export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
@@ -27,12 +31,14 @@ export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
     beat,
     isSelected,
     isExpanded,
+    isLoadingBranches = false,
     layout = "horizontal",
     onSelect,
     onToggleBranch,
     onUpdateBeat,
     onGenerateOptions,
     onGenerateKeyframes,
+    referenceImages = [],
   } = data
   const beatIndex = beat.id - 1
   const totalBeats = 15
@@ -55,7 +61,7 @@ export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
   const getHandlePositions = () => {
     switch (layout) {
       case "horizontal":
-        return { source: Position.Right, target: Position.Left, branch: Position.Bottom }
+        return { source: Position.Right, target: Position.Left, branch: Position.Right }
       case "vertical":
         return { source: Position.Bottom, target: Position.Top, branch: Position.Bottom }
       case "free":
@@ -70,6 +76,7 @@ export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
   // Get unified color set based on beat position
   const colors = getBeatColorSet(beatIndex, totalBeats)
   const selectedBranch = beat.branches?.find((b: { selected: boolean }) => b.selected)
+  const branchCount = beat.branches?.length ?? 0
 
   return (
     <div className="relative group">
@@ -159,6 +166,20 @@ export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
                 )
               })}
             </div>
+          ) : !hasFrames && !IMAGE_GENERATION_ENABLED && referenceImages.length > 0 ? (
+            <div
+              className="grid gap-[1px] bg-zinc-800"
+              style={{ gridTemplateColumns: `repeat(${Math.min(referenceImages.length, 3)}, minmax(0, 1fr))` }}
+            >
+              {referenceImages.slice(0, 3).map((url, idx) => (
+                <div key={idx} className="h-[140px] bg-zinc-900 relative">
+                  <img src={url} alt={`Reference ${idx + 1}`} className="w-full h-full object-cover" />
+                  <span className="absolute bottom-0 left-0 text-[7px] font-mono text-white/70 bg-black/70 px-1">
+                    REF {idx + 1}
+                  </span>
+                </div>
+              ))}
+            </div>
           ) : (
             <div className={`grid grid-cols-3 gap-[1px] bg-zinc-800 ${isGenerating ? 'opacity-30' : ''}`}>
               {hasFrames ? (
@@ -199,19 +220,10 @@ export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
               : (beat.generatedIdea || beat.desc || "Scene description will appear here...")}
           </p>
 
-          {!isSkeleton && (
+          {!isSkeleton && !isGenerating && (
             <div className="flex items-center justify-between gap-2">
-              {selectedBranch ? (
-                <div className="flex items-center gap-1.5 text-pink-400 flex-1 min-w-0">
-                  <GitBranch size={14} />
-                  <span className="text-[10px] font-medium truncate">{selectedBranch.title}</span>
-                </div>
-              ) : (
-                <div className="text-[10px] text-zinc-600">Choose your path...</div>
-              )}
-
               {/* 2x2 option-grid button */}
-              {!hasFrames && !hasOptions && (
+              {IMAGE_GENERATION_ENABLED && !hasFrames && !hasOptions && (
                 <motion.button
                   whileTap={{ scale: 0.95 }}
                   disabled={!onGenerateOptions || isGeneratingOptions || isGenerating}
@@ -234,7 +246,7 @@ export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
               )}
 
               {/* 3x3 expansion button after a 2x2 option is selected */}
-              {!hasFrames && hasOptions && (
+              {IMAGE_GENERATION_ENABLED && !hasFrames && hasOptions && (
                 <motion.button
                   whileTap={{ scale: 0.95 }}
                   disabled={!onGenerateKeyframes || isGeneratingKeyframes || isGenerating}
@@ -256,26 +268,51 @@ export const StoryBeatNode = memo(({ data }: { data: StoryBeatNodeData }) => {
                 </motion.button>
               )}
 
-              {/* Branch button */}
               <motion.button
-                whileTap={{ scale: 0.95 }}
+                whileTap={{ scale: isLoadingBranches ? 1 : 0.97 }}
+                disabled={isLoadingBranches}
                 onClick={(e) => {
                   e.stopPropagation()
                   onToggleBranch()
                 }}
                 className={`
-                  text-[10px] px-3 py-2 font-bold uppercase flex items-center gap-1.5 transition-all shrink-0
-                  ${isExpanded
-                    ? "bg-pink-500 text-white"
-                    : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                  nodrag flex-1 min-w-0 text-[11px] px-3 py-2 font-bold flex items-center justify-center gap-1.5 transition-all
+                  ${isLoadingBranches
+                    ? "bg-pink-500/30 text-pink-200 cursor-wait"
+                    : selectedBranch
+                      ? "bg-zinc-800 text-pink-300 hover:bg-zinc-700"
+                      : branchCount === 0
+                        ? "bg-pink-500 text-white hover:bg-pink-400"
+                        : isExpanded
+                          ? "bg-pink-500/20 text-pink-200 hover:bg-pink-500/30"
+                          : "bg-pink-500 text-white hover:bg-pink-400"
                   }
                 `}
               >
-                <GitBranch size={14} />
-                {beat.branches?.length || 0}
-                <motion.div animate={{ rotate: isExpanded ? 180 : 0 }}>
-                  <ChevronDown size={12} />
-                </motion.div>
+                {isLoadingBranches ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin shrink-0" />
+                    <span>Writing paths… (~20s)</span>
+                  </>
+                ) : selectedBranch ? (
+                  <>
+                    <GitBranch size={14} className="shrink-0" />
+                    <span className="truncate">{selectedBranch.title}</span>
+                  </>
+                ) : branchCount === 0 ? (
+                  <>
+                    <GitBranch size={14} className="shrink-0" />
+                    <span>What happens next?</span>
+                  </>
+                ) : (
+                  <>
+                    <GitBranch size={14} className="shrink-0" />
+                    <span>{isExpanded ? `Hide ${branchCount} paths` : `Show ${branchCount} paths`}</span>
+                    <motion.div animate={{ rotate: isExpanded ? 180 : 0 }}>
+                      <ChevronDown size={12} />
+                    </motion.div>
+                  </>
+                )}
               </motion.button>
             </div>
           )}

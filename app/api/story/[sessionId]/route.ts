@@ -112,6 +112,11 @@ export async function GET(
       })
     )
 
+    const storyData = session.story_data_json ? JSON.parse(session.story_data_json) : null
+    const referenceImages: string[] = Array.isArray(storyData?.referenceImages)
+      ? storyData.referenceImages.filter((url: unknown): url is string => typeof url === 'string')
+      : []
+
     return NextResponse.json({
       success: true,
       sessionId,
@@ -120,10 +125,9 @@ export async function GET(
       status: session.status,
       currentBeat: session.current_beat,
       totalBeats: session.total_beats,
-      referenceImageUrl: session.reference_image_url || null,
-      storyData: session.story_data_json
-        ? JSON.parse(session.story_data_json)
-        : null,
+      referenceImageUrl: session.reference_image_url || referenceImages[0] || null,
+      referenceImages,
+      storyData,
       createdAt: session.created_at,
       beats: enrichedBeats,
     })

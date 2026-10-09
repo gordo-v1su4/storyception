@@ -8,15 +8,19 @@
 import { useCallback, useMemo } from 'react'
 import type { Node } from '@xyflow/react'
 
+export type HierarchyDirection = 'vertical' | 'horizontal'
+
 interface LayoutOptions {
+  direction: HierarchyDirection
   nodeWidth: number
   nodeHeight: number
   beatGap: number                   // Gap between beat and next element
-  branchHorizontalSpacing: number
-  branchGap: number                 // Gap below branches before next beat
+  branchHorizontalSpacing: number   // Spacing between sibling branches (along the cross axis)
+  branchGap: number                 // Gap after branches before next beat
 }
 
 const defaultOptions: LayoutOptions = {
+  direction: 'vertical',
   nodeWidth: 320,
   nodeHeight: 400,                  // 4:5 aspect ratio
   beatGap: 60,                      // Gap below beat (to branches or next beat)
@@ -53,6 +57,30 @@ export function calculateHierarchyLayout(
       beatToBranches.get(edge.source)!.push(edge.target)
     }
   })
+
+  if (opts.direction === 'horizontal') {
+    // Beats flow left to right; each beat's branches stack in a column to its right
+    const branchVerticalSpacing = opts.nodeHeight + 40
+    let currentX = 0
+    beatNodes.forEach((beat) => {
+      positions.set(beat.id, { x: currentX, y: 0 })
+      const branchIds = beatToBranches.get(beat.id) || []
+      if (branchIds.length > 0) {
+        const branchX = currentX + opts.nodeWidth + opts.beatGap * 2
+        branchIds.forEach((branchId, branchIdx) => {
+          const offsetMultiplier = branchIdx - (branchIds.length - 1) / 2
+          positions.set(branchId, { x: branchX, y: offsetMultiplier * branchVerticalSpacing })
+        })
+        currentX = branchX + opts.nodeWidth + opts.branchGap * 2
+      } else {
+        currentX = currentX + opts.nodeWidth + opts.beatGap * 2
+      }
+    })
+    if (nodes.some(n => n.id === 'teaser-next')) {
+      positions.set('teaser-next', { x: currentX, y: opts.nodeHeight / 2 - 30 })
+    }
+    return positions
+  }
 
   // Center X position for main beat column
   const centerX = 0

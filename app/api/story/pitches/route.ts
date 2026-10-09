@@ -1,9 +1,11 @@
 import { Type } from '@google/genai'
 import { NextRequest, NextResponse } from 'next/server'
-import { createGeminiClient } from '@/lib/gemini-client'
 import { getBranchNarrativeModel } from '@/lib/gemini-models'
+import { generateStoryJson } from '@/lib/story-text-llm'
 import { CURRENT_ZEITGEIST_DIRECTIVE, CURRENT_VISUAL_DIRECTIVE } from '@/lib/zeitgeist'
 import type { StoryConceptPitch } from '@/lib/types'
+
+const PITCH_TIMEOUT_MS = Number.parseInt(process.env.GEMINI_TIMEOUT_MS ?? '', 10) || 90_000
 
 const PITCH_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
@@ -55,7 +57,7 @@ export async function POST(request: NextRequest) {
           .slice(0, 3)
           .map((draft: unknown, index: number) => {
             const d = draft && typeof draft === 'object' ? (draft as Record<string, unknown>) : {}
-            return `${index + 1}. ${asString(d.name) || 'Unnamed subject'} — ${asString(d.kind) || 'unknown'} — ${
+            return `Image ${index + 1} (${asString(d.kind) || 'unknown'}): ${asString(d.name) || 'Unnamed subject'} — ${
               asString(d.descriptor) || 'no descriptor'
             }`
           })
@@ -67,14 +69,15 @@ export async function POST(request: NextRequest) {
 Archetype: ${archetypeName}
 Target outcome: ${outcomeName}
 Reference images uploaded: ${referenceCount}
-Detected subjects:
-${characterLines || '(none yet)'}
+What the reference images show:
+${characterLines || '(no descriptions available)'}
 
 ${CURRENT_ZEITGEIST_DIRECTIVE}
 ${CURRENT_VISUAL_DIRECTIVE}
 
 Requirements:
-- Each pitch must be materially different: different genre lane, pressure system, and central reversal.
+- The reference images are the story's raw material. Every pitch must be built from what they show: the people in them are the cast (a single portrait is the protagonist), and their settings, situations, and any action in progress must appear in the plot. Do not invent an unrelated protagonist or world.
+- Each pitch must be materially different: different genre lane, pressure system, and central reversal — while staying anchored to the same reference images.
 - Make each idea feel current, cinematic, high-budget, and useful for judging the later prompt/image quality.
 - Use concise, non-infringing taste references only; do not copy protected IP.
 - The user will pick one pitch, so logline and plot must be clear enough to choose from.
@@ -82,21 +85,18 @@ Requirements:
 
 Return ONLY JSON matching the response schema.`
 
-    const ai = createGeminiClient()
-    const res = await ai.models.generateContent({
-      model: getBranchNarrativeModel(),
-      contents: prompt,
-      config: {
-        temperature: 0.95,
-        maxOutputTokens: 4096,
-        responseMimeType: 'application/json',
-        responseSchema: PITCH_RESPONSE_SCHEMA,
-        systemInstruction:
-          'You are a premium film/TV/music-video/commercial development producer. Return valid JSON only.',
-      },
+    const text = await generateStoryJson({
+      prompt,
+      system:
+        'You are a premium film/TV/music-video/commercial development producer. Return valid JSON only.',
+      geminiModel: getBranchNarrativeModel(),
+      schema: PITCH_RESPONSE_SCHEMA,
+      temperature: 0.95,
+      maxOutputTokens: 4096,
+      timeoutMs: PITCH_TIMEOUT_MS,
     })
 
-    const parsed = JSON.parse((res.text ?? '').trim() || '{"pitches":[]}') as {
+    const parsed = JSON.parse(text || '{"pitches":[]}') as {
       pitches?: Array<Partial<StoryConceptPitch>>
     }
     const pitches: StoryConceptPitch[] = (Array.isArray(parsed.pitches) ? parsed.pitches : [])

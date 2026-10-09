@@ -1,6 +1,5 @@
-import { createPartFromText, createUserContent } from '@google/genai'
-import { createGeminiClient } from './gemini-client'
 import { getBranchNarrativeModel } from './gemini-models'
+import { generateStoryJson, getStoryTextModelLabel } from './story-text-llm'
 import { CURRENT_ZEITGEIST_DIRECTIVE, CURRENT_VISUAL_DIRECTIVE } from './zeitgeist'
 
 export type GeminiBranchPlanRow = {
@@ -15,7 +14,7 @@ export type GeminiBranchPlanRow = {
 }
 
 /**
- * In-app branch generation (Gemini Developer API only — no n8n).
+ * In-app branch generation via the narrative provider (Kimi or Gemini — no n8n).
  * Returns three paths with nine image prompts each for optional downstream grid generation.
  */
 export async function generateBranchesWithGemini(input: {
@@ -62,37 +61,25 @@ Rules:
 - "branches" array length must be exactly 3.
 - Each "imagePrompts" must have exactly 9 strings: detailed cinematic shots suitable for AI image generation (camera, lighting, action).`
 
-  const ai = createGeminiClient()
-  const res = await ai.models.generateContent({
-    model: getBranchNarrativeModel(),
-    contents: createUserContent(createPartFromText(prompt)),
-    config: {
-      temperature: 0.85,
-      maxOutputTokens: 8192,
-      responseMimeType: 'application/json',
-      systemInstruction: createUserContent(
-        createPartFromText(
-          'You return only valid JSON. No markdown fences or commentary.'
-        )
-      ),
-    },
+  const text = await generateStoryJson({
+    prompt,
+    system: 'You return only valid JSON. No markdown fences or commentary.',
+    geminiModel: getBranchNarrativeModel(),
+    temperature: 0.85,
+    maxOutputTokens: 8192,
+    timeoutMs: Number.parseInt(process.env.GEMINI_TIMEOUT_MS ?? '', 10) || 90_000,
   })
-
-  const text = (res.text ?? '').trim()
-  if (!text) throw new Error('Gemini returned empty branch JSON')
 
   let parsed: { branches?: GeminiBranchPlanRow[] }
   try {
     parsed = JSON.parse(text) as { branches?: GeminiBranchPlanRow[] }
   } catch {
-    const m = text.match(/```json\n?([\s\S]*?)\n?```/)
-    if (m) parsed = JSON.parse(m[1]!) as { branches?: GeminiBranchPlanRow[] }
-    else throw new Error('Failed to parse branch JSON from Gemini')
+    throw new Error(`Failed to parse branch JSON from ${getStoryTextModelLabel()}`)
   }
 
   const raw = parsed.branches
   if (!Array.isArray(raw) || raw.length === 0) {
-    throw new Error('Gemini branch response missing branches array')
+    throw new Error(`${getStoryTextModelLabel()} branch response missing branches array`)
   }
 
   const branches = raw.slice(0, 3).map((b, i) => {

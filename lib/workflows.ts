@@ -1,21 +1,14 @@
 /**
- * Storyception narrative workflows. Calls Gemini directly via `@google/genai`
- * with `responseMimeType: 'application/json'` + a `responseSchema` for reliable
- * structured output.
+ * Storyception narrative workflows. Text goes through {@link generateStoryJson}
+ * (Kimi when `KIMI_API_KEY` is set, else Gemini structured output).
  *
- * Previously these went through the `@google/adk` SequentialAgent and parsed
- * the agent's free-text reply with a brittle `/\{[\s\S]*\}/` regex. That
- * regex extract silently dropped to `{}` on any prose/markdown wrapping,
- * which is why beats were coming back with empty `scene_description` for
- * every session even when auth was working.
- *
- * See `GOOGLE_AUTH_AND_PIPELINE_NOTES_2026-05-14.md` for the full back-story.
+ * See `GOOGLE_AUTH_AND_PIPELINE_NOTES_2026-05-14.md` for the Gemini back-story.
  */
 
 import './adk-env'
 import { Type } from '@google/genai'
-import { createGeminiClient } from './gemini-client'
 import { getBranchNarrativeModel, getInitialStoryNarrativeModel } from './gemini-models'
+import { generateStoryJson, getStoryTextModelLabel } from './story-text-llm'
 import type { CharacterRecord } from './storyception-schema'
 import type { StoryConceptPitch } from './types'
 import { CURRENT_ZEITGEIST_DIRECTIVE, CURRENT_VISUAL_DIRECTIVE } from './zeitgeist'
@@ -106,11 +99,19 @@ export interface PlannedBeat {
   keyframe_prompts: string[]
 }
 
+export interface ReferenceSubject {
+  kind: string
+  name: string
+  descriptor: string
+}
+
 export interface StoryWorkflowInput {
   archetypeName: string
   outcomeName: string
   referenceImageUrl?: string
   referenceImages?: string[]
+  /** Vision descriptions of the uploaded reference images, in upload order. */
+  referenceSubjects?: ReferenceSubject[]
   beatLabels?: string[]
   characters?: CharacterRecord[]
   conceptPitch?: StoryConceptPitch
@@ -142,11 +143,11 @@ export function buildCharacterContextBlock(characters?: CharacterRecord[]): stri
 
 export const StoryWorkflow = {
   async run(input: StoryWorkflowInput): Promise<StoryWorkflowResult> {
+    const referenceUrl = input.referenceImageUrl || input.referenceImages?.[0]
+    // Inline `data:` uploads are megabytes of base64; only link real URLs in the prompt.
     const referenceLine =
-      input.referenceImageUrl || input.referenceImages?.[0]
-        ? `\nReference image (visual anchor for tone, lighting, palette): ${
-            input.referenceImageUrl || input.referenceImages?.[0]
-          }`
+      referenceUrl && /^https?:\/\//i.test(referenceUrl)
+        ? `\nReference image (visual anchor for tone, lighting, palette): ${referenceUrl}`
         : ''
 
     const beatLabelsLine = input.beatLabels?.length
@@ -156,6 +157,11 @@ export const StoryWorkflow = {
       : ''
 
     const characterContext = buildCharacterContextBlock(input.characters)
+    const subjectsContext = input.referenceSubjects?.length
+      ? `\nWhat the uploaded reference images show (the story must use these people, places, and situations):\n${input.referenceSubjects
+          .map((s, i) => `  Image ${i + 1} (${s.kind}): ${s.name} — ${s.descriptor}`)
+          .join('\n')}`
+      : ''
     const pitchContext = input.conceptPitch
       ? `\nSelected concept pitch:\nTitle: ${input.conceptPitch.title}\nLogline: ${input.conceptPitch.logline}\nPlot: ${input.conceptPitch.plot}\nTone: ${input.conceptPitch.tone}\nRequired twist/reversal: ${input.conceptPitch.twist}\nUse this pitch as the story contract.`
       : ''
@@ -163,7 +169,7 @@ export const StoryWorkflow = {
     const prompt = `Plan the opening of an interactive cinematic short.
 
 Archetype: ${input.archetypeName}${pitchContext}
-Target outcome: ${input.outcomeName}${beatLabelsLine}${referenceLine}${characterContext}
+Target outcome: ${input.outcomeName}${beatLabelsLine}${referenceLine}${subjectsContext}${characterContext}
 
 ${CURRENT_ZEITGEIST_DIRECTIVE}
 ${CURRENT_VISUAL_DIRECTIVE}
@@ -179,27 +185,15 @@ ${characterContext ? '5. When confirmed characters are relevant, mention them by
 
 Respond ONLY with JSON matching the response schema.`
 
-    const model = getInitialStoryNarrativeModel()
-    const ai = createGeminiClient()
-    const abortSignal = AbortSignal.timeout(STORY_TIMEOUT_MS)
-
-    const res = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        abortSignal,
-        temperature: 0.9,
-        maxOutputTokens: 8192,
-        responseMimeType: 'application/json',
-        responseSchema: STORY_RESPONSE_SCHEMA,
-        systemInstruction: SYSTEM_INSTRUCTION_STORY,
-      },
+    const text = await generateStoryJson({
+      prompt,
+      system: SYSTEM_INSTRUCTION_STORY,
+      geminiModel: getInitialStoryNarrativeModel(),
+      schema: STORY_RESPONSE_SCHEMA,
+      temperature: 0.9,
+      maxOutputTokens: 8192,
+      timeoutMs: STORY_TIMEOUT_MS,
     })
-
-    const text = (res.text ?? '').trim()
-    if (!text) {
-      throw new Error('Gemini returned empty response for story planning')
-    }
 
     let parsed: {
       story_title?: string
@@ -211,9 +205,7 @@ Respond ONLY with JSON matching the response schema.`
       parsed = JSON.parse(text)
     } catch (e) {
       console.error('StoryWorkflow JSON parse failed. Raw response head:', text.slice(0, 400))
-      throw new Error(
-        `Gemini returned non-JSON despite responseMimeType=application/json: ${(e as Error).message}`
-      )
+      throw new Error(`${getStoryTextModelLabel()} returned non-JSON story plan: ${(e as Error).message}`)
     }
 
     const beats = Array.isArray(parsed.beats) ? parsed.beats.slice(0, 2) : []
@@ -277,24 +269,15 @@ ${CURRENT_ZEITGEIST_DIRECTIVE}
 
 Each branch is a meaningful narrative choice the player can take. Branches must feel distinct (different attitude, action, or risk profile) and align with the natural flow of this story. Return ONLY JSON matching the response schema.`
 
-    const model = getBranchNarrativeModel()
-    const ai = createGeminiClient()
-    const abortSignal = AbortSignal.timeout(STORY_TIMEOUT_MS)
-
-    const res = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        abortSignal,
-        temperature: 0.85,
-        maxOutputTokens: 1024,
-        responseMimeType: 'application/json',
-        responseSchema: BRANCH_RESPONSE_SCHEMA,
-        systemInstruction: SYSTEM_INSTRUCTION_BRANCH,
-      },
+    const text = await generateStoryJson({
+      prompt,
+      system: SYSTEM_INSTRUCTION_BRANCH,
+      geminiModel: getBranchNarrativeModel(),
+      schema: BRANCH_RESPONSE_SCHEMA,
+      temperature: 0.85,
+      maxOutputTokens: 1024,
+      timeoutMs: STORY_TIMEOUT_MS,
     })
-
-    const text = (res.text ?? '').trim()
     let parsed: { branches?: Array<{ label?: string; outcome_hint?: string }> } = {}
     if (text) {
       try {
@@ -322,7 +305,7 @@ Each branch is a meaningful narrative choice the player can take. Branches must 
 
     if (branches.length === 0) {
       console.warn(
-        'BranchWorkflow used default branches because Gemini returned no usable branches.',
+        `BranchWorkflow used default branches because ${getStoryTextModelLabel()} returned no usable branches.`,
         { hasText: text.length > 0, rawHead: text.slice(0, 300) }
       )
     }
